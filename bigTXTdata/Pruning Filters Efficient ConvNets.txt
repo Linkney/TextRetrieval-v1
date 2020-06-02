@@ -1,0 +1,783 @@
+Published as a conference paper at ICLR 2017
+PRUN ING F I LT ER S FOR E FFIC I EN T CONVN E T S
+Hao Li∗
+University of Maryland
+haoli@cs.umd.edu
+Hanan Samet†
+University of Maryland
+hjs@cs.umd.edu
+Asim Kadav
+NEC Labs America
+asim@nec-labs.com
+Igor Durdanovic
+NEC Labs America
+igord@nec-labs.com
+Hans Peter Graf
+NEC Labs America
+hpg@nec-labs.com
+7
+1
+0
+2
+r
+a
+M
+0
+1
+]
+V
+C
+.
+s
+c
+[
+3
+v
+0
+1
+7
+8
+0
+.
+8
+0
+6
+1
+:
+v
+i
+X
+r
+a
+AB STRAC T
+The success of CNNs in various applications is accompanied by a signiﬁcant
+increase in the computation and parameter storage costs. Recent efforts toward
+reducing these overheads involve pruning and compressing the weights of various
+layers without hurting original accuracy. However, magnitude-based pruning of
+weights reduces a signiﬁcant number of parameters from the fully connected layers
+and may not adequately reduce the computation costs in the convolutional layers
+due to irregular sparsity in the pruned networks. We present an acceleration method
+for CNNs, where we prune ﬁlters from CNNs that are identiﬁed as having a small
+effect on the output accuracy. By removing whole ﬁlters in the network together
+with their connecting feature maps, the computation costs are reduced signiﬁcantly.
+In contrast to pruning weights, this approach does not result in sparse connectivity
+patterns. Hence, it does not need the support of sparse convolution libraries and
+can work with existing efﬁcient BLAS libraries for dense matrix multiplications.
+We show that even simple ﬁlter pruning techniques can reduce inference costs for
+VGG-16 by up to 34% and ResNet-110 by up to 38% on CIFAR10 while regaining
+close to the original accuracy by retraining the networks.
+1
+IN TRODUC T ION
+The ImageNet challenge has led to signiﬁcant advancements in exploring various architectural
+choices in CNNs (Russakovsky et al. (2015); Krizhevsky et al. (2012); Simonyan & Zisserman
+(2015); Szegedy et al. (2015a); He et al. (2016)). The general trend since the past few years has
+been that the networks have grown deeper, with an overall increase in the number of parameters and
+convolution operations. These high capacity networks have signiﬁcant inference costs especially
+when used with embedded sensors or mobile devices where computational and power resources
+may be limited. For these applications, in addition to accuracy, computational efﬁciency and small
+network sizes are crucial enabling factors (Szegedy et al. (2015b)). In addition, for web services
+that provide image search and image classiﬁcation APIs that operate on a time budget often serving
+hundreds of thousands of images per second, beneﬁt signiﬁcantly from lower inference times.
+There has been a signiﬁcant amount of work on reducing the storage and computation costs by model
+compression (Le Cun et al. (1989); Hassibi & Stork (1993); Srinivas & Babu (2015); Han et al.
+(2015); Mariet & Sra (2016)). Recently Han et al. (2015; 2016b) report impressive compression rates
+on AlexNet (Krizhevsky et al. (2012)) and VGGNet (Simonyan & Zisserman (2015)) by pruning
+weights with small magnitudes and then retraining without hurting the overall accuracy. However,
+pruning parameters does not necessarily reduce the computation time since the majority of the
+parameters removed are from the fully connected layers where the computation cost is low, e.g., the
+fully connected layers of VGG-16 occupy 90% of the total parameters but only contribute less than
+1% of the overall ﬂoating point operations (FLOP). They also demonstrate that the convolutional
+layers can be compressed and accelerated (Iandola et al. (2016)), but additionally require sparse
+∗Work done at NEC Labs
+†Supported in part by the NSF under Grant IIS-13-2079
+1
+Published as a conference paper at ICLR 2017
+BLAS libraries or even specialized hardware (Han et al. (2016a)). Modern libraries that provide
+speedup using sparse operations over CNNs are often limited (Szegedy et al. (2015a); Liu et al.
+(2015)) and maintaining sparse data structures also creates an additional storage overhead which can
+be signiﬁcant for low-precision weights.
+Recent work on CNNs have yielded deep architectures with more efﬁcient design (Szegedy et al.
+(2015a;b); He & Sun (2015); He et al. (2016)), in which the fully connected layers are replaced with
+average pooling layers (Lin et al. (2013); He et al. (2016)), which reduces the number of parameters
+signiﬁcantly. The computation cost is also reduced by downsampling the image at an early stage
+to reduce the size of feature maps (He & Sun (2015)). Nevertheless, as the networks continue to
+become deeper, the computation costs of convolutional layers continue to dominate.
+CNNs with large capacity usually have signiﬁcant redundancy among different ﬁlters and feature
+channels. In this work, we focus on reducing the computation cost of well-trained CNNs by pruning
+ﬁlters. Compared to pruning weights across the network, ﬁlter pruning is a naturally structured way
+of pruning without introducing sparsity and therefore does not require using sparse libraries or any
+specialized hardware. The number of pruned ﬁlters correlates directly with acceleration by reducing
+the number of matrix multiplications, which is easy to tune for a target speedup. In addition, instead
+of layer-wise iterative ﬁne-tuning (retraining), we adopt a one-shot pruning and retraining strategy to
+save retraining time for pruning ﬁlters across multiple layers, which is critical for pruning very deep
+networks. Finally, we observe that even for ResNets, which have signiﬁcantly fewer parameters and
+inference costs than AlexNet or VGGNet, still have about 30% of FLOP reduction without sacriﬁcing
+too much accuracy. We conduct sensitivity analysis for convolutional layers in ResNets that improves
+the understanding of ResNets.
+2 R ELAT ED WORK
+The early work by Le Cun et al. (1989) introduces Optimal Brain Damage, which prunes weights
+with a theoretically justiﬁed saliency measure. Later, Hassibi & Stork (1993) propose Optimal Brain
+Surgeon to remove unimportant weights determined by the second-order derivative information.
+Mariet & Sra (2016) reduce the network redundancy by identifying a subset of diverse neurons that
+does not require retraining. However, this method only operates on the fully-connected layers and
+introduce sparse connections.
+To reduce the computation costs of the convolutional layers, past work have proposed to approximate
+convolutional operations by representing the weight matrix as a low rank product of two smaller
+matrices without changing the original number of ﬁlters (Denil et al. (2013); Jaderberg et al. (2014);
+Zhang et al. (2015b;a); Tai et al. (2016); Ioannou et al. (2016)). Other approaches to reduce the
+convolutional overheads include using FFT based convolutions (Mathieu et al. (2013)) and fast
+convolution using the Winograd algorithm (Lavin & Gray (2016)). Additionally, quantization (Han
+et al. (2016b)) and binarization (Rastegari et al. (2016); Courbariaux & Bengio (2016)) can be used
+to reduce the model size and lower the computation overheads. Our method can be used in addition
+to these techniques to reduce computation costs without incurring additional overheads.
+Several work have studied removing redundant feature maps from a well trained network (Anwar et al.
+(2015); Polyak & Wolf (2015)). Anwar et al. (2015) introduce a three-level pruning of the weights
+and locate the pruning candidates using particle ﬁltering, which selects the best combination from
+a number of random generated masks. Polyak & Wolf (2015) detect the less frequently activated
+feature maps with sample input data for face detection applications. We choose to analyze the
+ﬁlter weights and prune ﬁlters with their corresponding feature maps using a simple magnitude
+based measure, without examining possible combinations. We also introduce network-wide holistic
+approaches to prune ﬁlters for simple and complex convolutional network architectures.
+Concurrently with our work, there is a growing interest in training compact CNNs with sparse
+constraints (Lebedev & Lempitsky (2016); Zhou et al. (2016); Wen et al. (2016)). Lebedev &
+Lempitsky (2016) leverage group-sparsity on the convolutional ﬁlters to achieve structured brain
+damage, i.e., prune the entries of the convolution kernel in a group-wise fashion. Zhou et al. (2016)
+add group-sparse regularization on neurons during training to learn compact CNNs with reduced
+ﬁlters. Wen et al. (2016) add structured sparsity regularizer on each layer to reduce trivial ﬁlters,
+channels or even layers. In the ﬁlter-level pruning, all above work use (cid:96)2,1 -norm as a regularizer.
+2
+Published as a conference paper at ICLR 2017
+Similar to the above work, we use (cid:96)1 -norm to select unimportant ﬁlters and physically prune them.
+Our ﬁne-tuning process is the same as the conventional training procedure, without introducing
+additional regularization. Our approach does not introduce extra layer-wise meta-parameters for the
+regularizer except for the percentage of ﬁlters to be pruned, which is directly related to the desired
+speedup. By employing stage-wise pruning, we can set a single pruning rate for all layers in one
+stage.
+3 PRUN ING F I LT ER S AND F EATUR E MA P S
+Let ni denote the number of input channels for the ith convolutional layer and hi /wi be the
+height/width of the input feature maps. The convolutional layer transforms the input feature maps
+xi ∈ Rni×hi×wi into the output feature maps xi+1 ∈ Rni+1×hi+1×wi+1 , which are used as in-
+put feature maps for the next convolutional layer. This is achieved by applying ni+1 3D ﬁlters
+Fi,j ∈ Rni×k×k on the ni input channels, in which one ﬁlter generates one feature map. Each
+ﬁlter is composed by ni 2D kernels K ∈ Rk×k (e.g., 3 × 3). All the ﬁlters, together, constitute
+the kernel matrix Fi ∈ Rni×ni+1×k×k . The number of operations of the convolutional layer is
+ni+1nik2hi+1wi+1 . As shown in Figure 1, when a ﬁlter Fi,j is pruned, its corresponding feature
+map xi+1,j is removed, which reduces nik2hi+1wi+1 operations. The kernels that apply on the
+removed feature maps from the ﬁlters of the next convolutional layer are also removed, which saves
+an additional ni+2k2hi+2wi+2 operations. Pruning m ﬁlters of layer i will reduce m/ni+1 of the
+computation cost for both layers i and i + 1.
+Figure 1: Pruning a ﬁlter results in removal of its corresponding feature map and related kernels in
+the next layer.
+3 .1 D E TERM IN ING WH ICH FILT ER S TO PRUN E W I TH IN A S ING LE LAYER
+by calculating the sum of its absolute weights (cid:80) |Fi,j |, i.e., its (cid:96)1 -norm (cid:107)Fi,j (cid:107)1 . Since the number
+Our method prunes the less useful ﬁlters from a well-trained model for computational efﬁciency
+of input channels, ni , is the same across ﬁlters, (cid:80) |Fi,j | also represents the average magnitude
+while minimizing the accuracy drop. We measure the relative importance of a ﬁlter in each layer
+of its kernel weights. This value gives an expectation of the magnitude of the output feature map.
+Filters with smaller kernel weights tend to produce feature maps with weak activations as compared
+to the other ﬁlters in that layer. Figure 2(a) illustrates the distribution of ﬁlters’ absolute weights
+sum for each convolutional layer in a VGG-16 network trained on the CIFAR-10 dataset, where the
+distribution varies signiﬁcantly across layers. We ﬁnd that pruning the smallest ﬁlters works better
+in comparison with pruning the same number of random or largest ﬁlters (Section 4.4). Compared
+to other criteria for activation-based feature map pruning (Section 4.5), we ﬁnd (cid:96)1 -norm is a good
+criterion for data-free ﬁlter selection.
+1. For each ﬁlter Fi,j , calculate the sum of its absolute kernel weights sj = (cid:80)ni
+The procedure of pruning m ﬁlters from the ith convolutional layer is as follows:
+2. Sort the ﬁlters by sj .
+3. Prune m ﬁlters with the smallest sum values and their corresponding feature maps. The
+kernels in the next convolutional layer corresponding to the pruned feature maps are also
+removed.
+4. A new kernel matrix is created for both the ith and i + 1th layers, and the remaining kernel
+weights are copied to the new model.
+(cid:80) |Kl |.
+l=1
+3
+Published as a conference paper at ICLR 2017
+(a) Filters are ranked by sj
+(b) Prune the smallest ﬁlters
+(c) Prune and retrain
+Figure 2: (a) Sorting ﬁlters by absolute weights sum for each layer of VGG-16 on CIFAR-10. The
+x-axis is the ﬁlter index divided by the total number of ﬁlters. The y-axis is the ﬁlter weight sum
+divided by the max sum value among ﬁlters in that layer. (b) Pruning ﬁlters with the lowest absolute
+weights sum and their corresponding test accuracies on CIFAR-10. (c) Prune and retrain for each
+single layer of VGG-16 on CIFAR-10. Some layers are sensitive and it can be harder to recover
+accuracy after pruning them.
+Relationship to pruning weights Pruning ﬁlters with low absolute weights sum is similar to pruning
+low magnitude weights (Han et al. (2015)). Magnitude-based weight pruning may prune away whole
+ﬁlters when all the kernel weights of a ﬁlter are lower than a given threshold. However, it requires
+a careful tuning of the threshold and it is difﬁcult to predict the exact number of ﬁlters that will
+eventually be pruned. Furthermore, it generates sparse convolutional kernels which can be hard to
+accelerate given the lack of efﬁcient sparse libraries, especially for the case of low-sparsity.
+et al. (2016)) apply group-sparse regularization ((cid:80)ni
+j=1 (cid:107)Fi,j (cid:107)2 or (cid:96)2,1 -norm) on convolutional ﬁlters,
+which also favor to zero-out ﬁlters with small l2 -norms, i.e. Fi,j = 0. In practice, we do not observe
+noticeable difference between the (cid:96)2 -norm and the (cid:96)1 -norm for ﬁlter selection, as the important
+ﬁlters tend to have large values for both measures (Appendix 6.1). Zeroing out weights of multiple
+ﬁlters during training has a similar effect to pruning ﬁlters with the strategy of iterative pruning and
+retraining as introduced in Section 3.4.
+Relationship to group-sparse regularization on ﬁlters Recent work (Zhou et al. (2016); Wen
+3 .2 D E TERM IN ING S ING L E LAY ER ’ S SEN S I T IV I TY TO PRUN ING
+To understand the sensitivity of each layer, we prune each layer independently and evaluate the
+resulting pruned network’s accuracy on the validation set. Figure 2(b) shows that layers that maintain
+their accuracy as ﬁlters are pruned away correspond to layers with larger slopes in Figure 2(a). On
+the contrary, layers with relatively ﬂat slopes are more sensitive to pruning. We empirically determine
+the number of ﬁlters to prune for each layer based on their sensitivity to pruning. For deep networks
+such as VGG-16 or ResNets, we observe that layers in the same stage (with the same feature map
+size) have a similar sensitivity to pruning. To avoid introducing layer-wise meta-parameters, we use
+the same pruning ratio for all layers in the same stage. For layers that are sensitive to pruning, we
+prune a smaller percentage of these layers or completely skip pruning them.
+3 .3 PRUN ING FILT ER S ACRO S S MU LT I P LE LAY ER S
+We now discuss how to prune ﬁlters across the network. Previous work prunes the weights on a layer
+by layer basis, followed by iteratively retraining and compensating for any loss of accuracy (Han et al.
+(2015)). However, understanding how to prune ﬁlters of multiple layers at once can be useful: 1) For
+deep networks, pruning and retraining on a layer by layer basis can be extremely time-consuming 2)
+Pruning layers across the network gives a holistic view of the robustness of the network resulting in a
+smaller network 3) For complex networks, a holistic approach may be necessary. For example, for
+the ResNet, pruning the identity feature maps or the second layer of each residual block results in
+additional pruning of other layers.
+To prune ﬁlters across multiple layers, we consider two strategies for layer-wise ﬁlter selection:
+4
+Published as a conference paper at ICLR 2017
+• Independent pruning determines which ﬁlters should be pruned at each layer independent of
+other layers.
+• Greedy pruning accounts for the ﬁlters that have been removed in the previous layers.
+This strategy does not consider the kernels for the previously pruned feature maps while
+calculating the sum of absolute weights.
+Figure 3 illustrates the difference between two approaches in calculating the sum of absolute weights.
+The greedy approach, though not globally optimal, is holistic and results in pruned networks with
+higher accuracy especially when many ﬁlters are pruned.
+Figure 3: Pruning ﬁlters across consecutive layers. The independent pruning strategy calculates
+the ﬁlter sum (columns marked in green) without considering feature maps removed in previous
+layer (shown in blue), so the kernel weights marked in yellow are still included. The greedy pruning
+strategy does not count kernels for the already pruned feature maps. Both approaches result in a
+(ni+1 − 1) × (ni+2 − 1) kernel matrix.
+Figure 4: Pruning residual blocks with the projection shortcut. The ﬁlters to be pruned for the second
+layer of the residual block (marked as green) are determined by the pruning result of the shortcut
+projection. The ﬁrst layer of the residual block can be pruned without restrictions.
+For simpler CNNs like VGGNet or AlexNet, we can easily prune any of the ﬁlters in any convolutional
+layer. However, for complex network architectures such as Residual networks (He et al. (2016)),
+pruning ﬁlters may not be straightforward. The architecture of ResNet imposes restrictions and the
+ﬁlters need to be pruned carefully. We show the ﬁlter pruning for residual blocks with projection
+mapping in Figure 4. Here, the ﬁlters of the ﬁrst layer in the residual block can be arbitrarily pruned,
+as it does not change the number of output feature maps of the block. However, the correspondence
+between the output feature maps of the second convolutional layer and the identity feature maps
+makes it difﬁcult to prune. Hence, to prune the second convolutional layer of the residual block, the
+corresponding projected feature maps must also be pruned. Since the identical feature maps are more
+important than the added residual maps, the feature maps to be pruned should be determined by the
+pruning results of the shortcut layer. To determine which identity feature maps are to be pruned, we
+use the same selection criterion based on the ﬁlters of the shortcut convolutional layers (with 1 × 1
+kernels). The second layer of the residual block is pruned with the same ﬁlter index as selected by
+the pruning of the shortcut layer.
+3 .4 R ETRA IN ING PRUN ED NE TWORK S TO R EGA IN ACCURACY
+After pruning the ﬁlters, the performance degradation should be compensated by retraining the
+network. There are two strategies to prune the ﬁlters across multiple layers:
+5
+Published as a conference paper at ICLR 2017
+1. Prune once and retrain: Prune ﬁlters of multiple layers at once and retrain them until the original
+accuracy is restored.
+2. Prune and retrain iteratively: Prune ﬁlters layer by layer or ﬁlter by ﬁlter and then retrain iteratively.
+The model is retrained before pruning the next layer for the weights to adapt to the changes from the
+pruning process.
+We ﬁnd that for the layers that are resilient to pruning, the prune and retrain once strategy can be
+used to prune away signiﬁcant portions of the network and any loss in accuracy can be regained by
+retraining for a short period of time (less than the original training time). However, when some ﬁlters
+from the sensitive layers are pruned away or large portions of the networks are pruned away, it may
+not be possible to recover the original accuracy. Iterative pruning and retraining may yield better
+results, but the iterative process requires many more epochs especially for very deep networks.
+4 EX PER IM EN T S
+We prune two types of networks: simple CNNs (VGG-16 on CIFAR-10) and Residual networks
+(ResNet-56/110 on CIFAR-10 and ResNet-34 on ImageNet). Unlike AlexNet or VGG (on ImageNet)
+that are often used to demonstrate model compression, both VGG (on CIFAR-10) and Residual
+networks have fewer parameters in the fully connected layers. Hence, pruning a large percentage
+of parameters from these networks is challenging. We implement our ﬁlter pruning method in
+Torch7 (Collobert et al. (2011)). When ﬁlters are pruned, a new model with fewer ﬁlters is created
+and the remaining parameters of the modiﬁed layers as well as the unaffected layers are copied into
+the new model. Furthermore, if a convolutional layer is pruned, the weights of the subsequent batch
+normalization layer are also removed. To get the baseline accuracies for each network, we train each
+model from scratch and follow the same pre-processing and hyper-parameters as ResNet (He et al.
+(2016)). For retraining, we use a constant learning rate 0.001 and retrain 40 epochs for CIFAR-10
+and 20 epochs for ImageNet, which represents one-fourth of the original training epochs. Past work
+has reported up to 3× original training times to retrain pruned networks (Han et al. (2015)).
+Table 1: Overall results. The best test/validation accuracy during the retraining process is reported.
+Training a pruned model from scratch performs worse than retraining a pruned model, which may
+indicate the difﬁculty of training a network with a small capacity.
+Pruned % Parameters
+1.5 × 107
+5.4 × 106
+8.5 × 105
+7.7 × 105
+7.3 × 105
+1.72 × 106
+1.68 × 106
+1.16 × 106
+2.16 × 107
+1.99 × 107
+1.93 × 107
+2.01 × 107
+Pruned %
+64.0%
+9.4%
+13.7%
+2.3%
+32.4%
+7.6%
+10.8%
+7.2%
+Model
+VGG-16
+VGG-16-pruned-A
+VGG-16-pruned-A scratch-train
+ResNet-56
+ResNet-56-pruned-A
+ResNet-56-pruned-B
+ResNet-56-pruned-B scratch-train
+ResNet-110
+ResNet-110-pruned-A
+ResNet-110-pruned-B
+ResNet-110-pruned-B scratch-train
+ResNet-34
+ResNet-34-pruned-A
+ResNet-34-pruned-B
+ResNet-34-pruned-C
+Error(%)
+6.75
+6.60
+6.88
+6.96
+6.90
+6.94
+8.69
+6.47
+6.45
+6.70
+7.06
+26.77
+27.44
+27.83
+27.52
+FLOP
+3.13 × 108
+2.06 × 108
+1.25 × 108
+1.12 × 108
+9.09 × 107
+2.53 × 108
+2.13 × 108
+1.55 × 108
+3.64 × 109
+3.08 × 109
+2.76 × 109
+3.37 × 109
+34.2%
+10.4%
+27.6%
+15.9%
+38.6%
+15.5%
+24.2%
+7.5%
+4 .1 VGG -16 ON C IFAR -10
+VGG-16 is a high-capacity network originally designed for the ImageNet dataset (Simonyan &
+Zisserman (2015)). Recently, Zagoruyko (2015) applies a slightly modiﬁed version of the model
+on CIFAR-10 and achieves state of the art results. As shown in Table 2, VGG-16 on CIFAR-10
+consists of 13 convolutional layers and 2 fully connected layers, in which the fully connected layers
+do not occupy large portions of parameters due to the small input size and less hidden units. We use
+the model described in Zagoruyko (2015) but add Batch Normalization (Ioffe & Szegedy (2015))
+6
+Published as a conference paper at ICLR 2017
+Table 2: VGG-16 on CIFAR-10 and the pruned model. The last two columns show the number of
+feature maps and the reduced percentage of FLOP from the pruned model.
+32 × 32
+32 × 32
+16 × 16
+16 × 16
+8 × 8
+8 × 8
+8 × 8
+4 × 4
+4 × 4
+4 × 4
+2 × 2
+2 × 2
+2 × 2
+layer type wi × hi
+Conv 1
+Conv 2
+Conv 3
+Conv 4
+Conv 5
+Conv 6
+Conv 7
+Conv 8
+Conv 9
+Conv 10
+Conv 11
+Conv 12
+Conv 13
+Linear
+Linear
+Total
+#Maps
+64
+64
+128
+128
+256
+256
+256
+512
+512
+512
+512
+512
+512
+512
+10
+FLOP
+1.8E+06
+3.8E+07
+1.9E+07
+3.8E+07
+1.9E+07
+3.8E+07
+3.8E+07
+1.9E+07
+3.8E+07
+3.8E+07
+9.4E+06
+9.4E+06
+9.4E+06
+2.6E+05
+5.1E+03
+3.1E+08
+#Params
+1.7E+03
+3.7E+04
+7.4E+04
+1.5E+05
+2.9E+05
+5.9E+05
+5.9E+05
+1.2E+06
+2.4E+06
+2.4E+06
+2.4E+06
+2.4E+06
+2.4E+06
+2.6E+05
+5.1E+03
+1.5E+07
+#Maps
+32
+64
+128
+128
+256
+256
+256
+256
+256
+256
+256
+256
+256
+512
+10
+FLOP%
+50%
+50%
+0%
+0%
+0%
+0%
+0%
+50%
+75%
+75%
+75%
+75%
+75%
+50%
+0%
+34%
+1
+1
+layer after each convolutional layer and the ﬁrst linear layer, without using Dropout (Srivastava et al.
+(2014)). Note that when the last convolutional layer is pruned, the input to the linear layer is changed
+and the connections are also removed.
+As shown in Figure 2(b), each of the convolutional layers with 512 feature maps can drop at least
+60% of ﬁlters without affecting the accuracy. Figure 2(c) shows that with retraining, almost 90%
+of the ﬁlters of these layers can be safely removed. One possible explanation is that these ﬁlters
+operate on 4 × 4 or 2 × 2 feature maps, which may have no meaningful spatial connections in such
+small dimensions. For instance, ResNets for CIFAR-10 do not perform any convolutions for feature
+maps below 8 × 8 dimensions. Unlike previous work (Zeiler & Fergus (2014); Han et al. (2015)), we
+observe that the ﬁrst layer is robust to pruning as compared to the next few layers. This is possible
+for a simple dataset like CIFAR-10, on which the model does not learn as much useful ﬁlters as on
+ImageNet (as shown in Figure. 5). Even when 80% of the ﬁlters from the ﬁrst layer are pruned, the
+number of remaining ﬁlters (12) is still larger than the number of raw input channels. However, when
+removing 80% ﬁlters from the second layer, the layer corresponds to a 64 to 12 mapping, which
+may lose signiﬁcant information from previous layers, thereby hurting the accuracy. With 50% of
+the ﬁlters being pruned in layer 1 and from 8 to 13, we achieve 34% FLOP reduction for the same
+accuracy.
+Figure 5: Visualization of ﬁlters in the ﬁrst convolutional layer of VGG-16 trained on CIFAR-10.
+Filters are ranked by (cid:96)1 -norm.
+4 .2 R E SN ET-56 /110 ON C IFAR -10
+ResNets for CIFAR-10 have three stages of residual blocks for feature maps with sizes of 32 × 32,
+16 × 16 and 8 × 8. Each stage has the same number of residual blocks. When the number of feature
+maps increases, the shortcut layer provides an identity mapping with an additional zero padding for
+the increased dimensions. Since there is no projection mapping for choosing the identity feature
+maps, we only consider pruning the ﬁrst layer of the residual block. As shown in Figure 6, most of
+the layers are robust to pruning. For ResNet-110, pruning some single layers without retraining even
+7
+Published as a conference paper at ICLR 2017
+Figure 6: Sensitivity to pruning for the ﬁrst layer of each residual block of ResNet-56/110.
+improves the performance. In addition, we ﬁnd that layers that are sensitive to pruning (layers 20,
+38 and 54 for ResNet-56, layer 36, 38 and 74 for ResNet-110) lie at the residual blocks close to the
+layers where the number of feature maps changes, e.g., the ﬁrst and the last residual blocks for each
+stage. We believe this happens because the precise residual errors are necessary for the newly added
+empty feature maps.
+The retraining performance can be improved by skipping these sensitive layers. As shown in Table 1,
+ResNet-56-pruned-A improves the performance by pruning 10% ﬁlters while skipping the sensitive
+layers 16, 20, 38 and 54. In addition, we ﬁnd that deeper layers are more sensitive to pruning than
+layers in the earlier stages of the network. Hence, we use a different pruning rate for each stage. We
+use pi to denote the pruning rate for layers in the ith stage. ResNet-56-pruned-B skips more layers (16,
+18, 20, 34, 38, 54) and prunes layers with p1=60%, p2=30% and p3=10%. For ResNet-110, the ﬁrst
+pruned model gets a slightly better result with p1=50% and layer 36 skipped. ResNet-110-pruned-B
+skips layers 36, 38, 74 and prunes with p1=50%, p2=40% and p3=30%. When there are more than
+two residual blocks at each stage, the middle residual blocks may be redundant and can be easily
+pruned. This might explain why ResNet-110 is easier to prune than ResNet-56.
+4 .3 R E SN ET-34 ON ILSVRC2012
+ResNets for ImageNet have four stages of residual blocks for feature maps with sizes of 56 × 56,
+28 × 28, 14 × 14 and 7 × 7. ResNet-34 uses the projection shortcut when the feature maps are
+down-sampled. We ﬁrst prune the ﬁrst layer of each residual block. Figure 7 shows the sensitivity of
+the ﬁrst layer of each residual block. Similar to ResNet-56/110, the ﬁrst and the last residual blocks
+of each stage are more sensitive to pruning than the intermediate blocks (i.e., layers 2, 8, 14, 16, 26,
+28, 30, 32). We skip those layers and prune the remaining layers at each stage equally. In Table 1 we
+compare two conﬁgurations of pruning percentages for the ﬁrst three stages: (A) p1=30%, p2=30%,
+p3=30%; (B) p1=50%, p2=60%, p3=40%. Option-B provides 24% FLOP reduction with about 1%
+loss in accuracy. As seen in the pruning results for ResNet-50/110, we can predict that ResNet-34 is
+relatively more difﬁcult to prune as compared to deeper ResNets.
+We also prune the identity shortcuts and the second convolutional layer of the residual blocks. As
+these layers have the same number of ﬁlters, they are pruned equally. As shown in Figure 7(b),
+these layers are more sensitive to pruning than the ﬁrst layers. With retraining, ResNet-34-pruned-C
+prunes the third stage with p3=20% and results in 7.5% FLOP reduction with 0.75% loss in accuracy.
+Therefore, pruning the ﬁrst layer of the residual block is more effective at reducing the overall FLOP
+8
+Published as a conference paper at ICLR 2017
+(a) Pruning the ﬁrst layer of residual blocks
+(b) Pruning the second layer of residual blocks
+Figure 7: Sensitivity to pruning for the residual blocks of ResNet-34.
+than pruning the second layer. This ﬁnding also correlates with the bottleneck block design for deeper
+ResNets, which ﬁrst reduces the dimension of input feature maps for the residual layer and then
+increases the dimension to match the identity mapping.
+4 .4 COM PAR I SON W I TH PRUN ING RANDOM FILT ER S AND LARG E S T FILTER S
+We compare our approach with pruning random ﬁlters and largest ﬁlters. As shown in Figure 8,
+pruning the smallest ﬁlters outperforms pruning random ﬁlters for most of the layers at different
+pruning ratios. For example, smallest ﬁlter pruning has better accuracy than random ﬁlter pruning for
+all layers with the pruning ratio of 90%. The accuracy of pruning ﬁlters with the largest (cid:96)1 -norms
+drops quickly as the pruning ratio increases, which indicates the importance of ﬁlters with larger
+(cid:96)1 -norms.
+Figure 8: Comparison of three pruning methods for VGG-16 on CIFAR-10: pruning the smallest
+ﬁlters, pruning random ﬁlters and pruning the largest ﬁlters. In random ﬁlter pruning, the order of
+ﬁlters to be pruned is randomly permuted.
+4 .5 COM PAR I SON W I TH AC T IVAT ION -BA SED FEATURE MA P PRUN ING
+The activation-based feature map pruning method removes the feature maps with weak activation
+patterns and their corresponding ﬁlters and kernels (Polyak & Wolf (2015)), which needs sample
+data as input to determine which feature maps to prune. A feature map xi+1,j ∈ Rwi+1×hi+1 is
+generated by applying ﬁlter Fi,j ∈ Rni×k×k to feature maps of previous layer xi ∈ Rni×wi×hi , i.e.,
+xi+1,j = Fi,j ∗ xi . Given N randomly selected images {xn
+n=1 from the training set, the statistics
+of each feature map can be estimated with one epoch forward pass of the N sampled data. Note that
+we calculate statistics on the feature maps generated from the convolution operations before batch
+normalization or non-linear activation. We compare our (cid:96)1 -norm based ﬁlter pruning with feature map
+pruning using the following criteria: σmean-mean (xi,j ) = 1
+i,j (cid:107)2 and
+i,j ), σmean-std (xi,j ) =
+n=1 (cid:107)xn
+i,j (cid:107)1 , σmean-(cid:96)2 (xi,j ) = 1
+N
+n=1 (cid:107)xn
+N
+n=1 mean(xn
+(cid:80)N
+1
+N
+n=1 std(xn
+i,j ), σmean-(cid:96)1 (xi,j ) = 1
+N
+(cid:80)N
+(cid:80)N
+1 }N
+(cid:80)N
+9
+Published as a conference paper at ICLR 2017
+(a) (cid:107)Fi,j (cid:107)1
+(b) σmean-mean
+(c) σmean-std
+(d) σmean-(cid:96)1
+(e) σmean-(cid:96)2
+(f) σvar-(cid:96)2
+Figure 9: Comparison of activation-based feature map pruning for VGG-16 on CIFAR-10.
+σvar-(cid:96)2 (xi,j ) = var({(cid:107)xn
+i,j (cid:107)2}N
+n=1 ), where mean, std and var are standard statistics (average,
+standard deviation and variance) of the input. Here, σvar-(cid:96)2 is the contribution variance of channel
+criterion proposed in Polyak & Wolf (2015), which is motivated by the intuition that an unimportant
+feature map has almost similar outputs for the whole training data and acts like an additional bias.
+The estimation of the criteria becomes more accurate when more sample data is used. Here we use
+the whole training set (N = 50, 000 for CIFAR-10) to compute the statistics. The performance of
+feature map pruning with above criteria for each layer is shown in Figure 9. Smallest ﬁlter pruning
+outperforms feature map pruning with the criteria σmean-mean , σmean-(cid:96)1 , σmean-(cid:96)2 and σvar-(cid:96)2 . The
+σmean-std criterion has better or similar performance to (cid:96)1 -norm up to pruning ratio of 60%. However,
+its performance drops quickly after that especially for layers of conv 1, conv 2 and conv 3. We
+ﬁnd (cid:96)1 -norm is a good heuristic for ﬁlter selection considering that it is data free.
+5 CONC LU S ION S
+Modern CNNs often have high capacity with large training and inference costs. In this paper we
+present a method to prune ﬁlters with relatively low weight magnitudes to produce CNNs with
+reduced computation costs without introducing irregular sparsity. It achieves about 30% reduction in
+FLOP for VGGNet (on CIFAR-10) and deep ResNets without signiﬁcant loss in the original accuracy.
+Instead of pruning with speciﬁc layer-wise hayperparameters and time-consuming iterative retraining,
+we use the one-shot pruning and retraining strategy for simplicity and ease of implementation. By
+performing lesion studies on very deep CNNs, we identify layers that are robust or sensitive to
+pruning, which can be useful for further understanding and improving the architectures.
+ACKNOW L EDGM ENT S
+The authors would like to thank the anonymous reviewers for their valuable feedback.
+R E F ER ENC E S
+Sajid Anwar, Kyuyeon Hwang, and Wonyong Sung. Structured Pruning of Deep Convolutional
+Neural Networks. arXiv preprint arXiv:1512.08571, 2015.
+10
+Published as a conference paper at ICLR 2017
+Ronan Collobert, Koray Kavukcuoglu, and Cl ´ement Farabet. Torch7: A matlab-like environment for
+machine learning. In BigLearn, NIPS Workshop, 2011.
+Matthieu Courbariaux and Yoshua Bengio. Binarynet: Training deep neural networks with weights
+and activations constrained to+ 1 or-1. arXiv preprint arXiv:1602.02830, 2016.
+Misha Denil, Babak Shakibi, Laurent Dinh, Nando de Freitas, et al. Predicting parameters in deep
+learning. In NIPS, 2013.
+Song Han, Jeff Pool, John Tran, and William Dally. Learning both Weights and Connections for
+Efﬁcient Neural Network. In NIPS, 2015.
+Song Han, Xingyu Liu, Huizi Mao, Jing Pu, Ardavan Pedram, Mark A Horowitz, and William J
+Dally. EIE: Efﬁcient Inference Engine on Compressed Deep Neural Network. In ISCA, 2016a.
+Song Han, Huizi Mao, and William J Dally. Deep Compression: Compressing Deep Neural Networks
+with Pruning, Trained Quantization and Huffman Coding. In ICLR, 2016b.
+Babak Hassibi and David G Stork. Second Order Derivatives for Network Pruning: Optimal Brain
+Surgeon. In NIPS, 1993.
+Kaiming He and Jian Sun. Convolutional Neural Networks at Constrained Time Cost. In CVPR,
+2015.
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep Residual Learning for Image
+Recognition. In CVPR, 2016.
+Forrest Iandola, Matthew Moskewicz, Khalidand Ashraf, Song Han, William Dally, and Keutzer Kurt.
+SqueezeNet: AlexNet-level accuracy with 50x fewer parameters and ¡ 1MB model size. arXiv
+preprint arXiv:1602.07360, 2016.
+Yani Ioannou, Duncan Robertson, Jamie Shotton, Roberto Cipolla, and Antonio Criminisi. Training
+CNNs with Low-Rank Filters for Efﬁcient Image Classiﬁcation. In ICLR, 2016.
+Sergey Ioffe and Christian Szegedy. Batch Normalization: Accelerating Deep Network Training by
+Reducing Internal Covariate Shift. 2015.
+Max Jaderberg, Andrea Vedaldi, and Andrew Zisserman. Speeding up convolutional neural networks
+with low rank expansions. In BMVC, 2014.
+Alex Krizhevsky, Ilya Sutskever, and Geoffrey E Hinton. Imagenet Classiﬁcation with Deep Convo-
+lutional Neural Networks. In NIPS, 2012.
+Andrew Lavin and Scott Gray. Fast Algorithms for Convolutional Neural Networks. In CVPR, 2016.
+Yann Le Cun, John S Denker, and Sara A Solla. Optimal Brain Damage. In NIPS, 1989.
+Vadim Lebedev and Victor Lempitsky. Fast Convnets Using Group-wise Brain Damage. In CVPR,
+2016.
+Min Lin, Qiang Chen, and Shuicheng Yan. Network in Network. arXiv preprint arXiv:1312.4400,
+2013.
+Baoyuan Liu, Min Wang, Hassan Foroosh, Marshall Tappen, and Marianna Pensky. Sparse Convolu-
+tional Neural Networks. In CVPR, 2015.
+Zelda Mariet and Suvrit Sra. Diversity Networks. In ICLR, 2016.
+Michael Mathieu, Mikael Henaff, and Yann LeCun. Fast Training of Convolutional Networks through
+FFTs. arXiv preprint arXiv:1312.5851, 2013.
+Adam Polyak and Lior Wolf. Channel-Level Acceleration of Deep Face Representations. IEEE
+Access, 2015.
+Mohammad Rastegari, Vicente Ordonez, Joseph Redmon, and Ali Farhadi. XNOR-Net: ImageNet
+Classiﬁcation Using Binary Convolutional Neural Networks. In ECCV, 2016.
+11
+Published as a conference paper at ICLR 2017
+Olga Russakovsky, Jia Deng, Hao Su, Jonathan Krause, Sanjeev Satheesh, Sean Ma, Zhiheng Huang,
+Andrej Karpathy, Aditya Khosla, Michael Bernstein, Alexander C. Berg, and Li Fei-Fei. ImageNet
+Large Scale Visual Recognition Challenge. IJCV, 2015.
+Karen Simonyan and Andrew Zisserman. Very Deep Convolutional Networks for Large-Scale Image
+Recognition. In ICLR, 2015.
+Suraj Srinivas and R Venkatesh Babu. Data-free Parameter Pruning for Deep Neural Networks. In
+BMVC, 2015.
+Nitish Srivastava, Geoffrey Hinton, Alex Krizhevsky, Ilya Sutskever, and Ruslan Salakhutdinov.
+Dropout: A Simple Way to Prevent Neural Networks from Overﬁtting. JMLR, 2014.
+Christian Szegedy, Wei Liu, Yangqing Jia, Pierre Sermanet, Scott Reed, Dragomir Anguelov, Dumitru
+Erhan, Vincent Vanhoucke, and Andrew Rabinovich. Going Deeper with Convolutions. In CVPR,
+2015a.
+Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jonathon Shlens, and Zbigniew Wojna. Rethink-
+ing the Inception Architecture for Computer Vision. arXiv preprint arXiv:1512.00567, 2015b.
+Cheng Tai, Tong Xiao, Xiaogang Wang, and Weinan E. Convolutional neural networks with low-rank
+regularization. In ICLR, 2016.
+Wei Wen, Chunpeng Wu, Yandan Wang, Yiran Chen, and Hai Li. Learning Structured Sparsity in
+Deep Learning. In NIPS, 2016.
+Sergey Zagoruyko. 92.45% on CIFAR-10 in Torch. http://torch.ch/blog/2015/07/30/
+cifar.html, 2015.
+Matthew D Zeiler and Rob Fergus. Visualizing and Understanding Convolutional Networks. In
+ECCV, 2014.
+Xiangyu Zhang, Jianhua Zou, Kaiming He, and Jian Sun. Accelerating Very Deep Convolutional
+Networks for Classiﬁcation and Detection. IEEE T-PAMI, 2015a.
+Xiangyu Zhang, Jianhua Zou, Xiang Ming, Kaiming He, and Jian Sun. Efﬁcient and accurate
+approximations of nonlinear convolutional networks. In CVPR, 2015b.
+Hao Zhou, Jose Alvarez, and Fatih Porikli. Less Is More: Towards Compact CNNs. In ECCV, 2016.
+12
+Published as a conference paper at ICLR 2017
+6 A P P END IX
+6 .1 COM PAR I SON W I TH (cid:96)2 -NORM BA SED FILT ER PRUN ING
+We compare (cid:96)1 -norm with (cid:96)2 -norm for ﬁlter pruning. As shown in Figure 10, (cid:96)1 -norm works slightly
+better than (cid:96)2 -norm for layer conv 2. There is no signiﬁcant difference between the two norms for
+other layers.
+(a) (cid:107)Fi,j (cid:107)1
+(b) (cid:107)Fi,j (cid:107)2
+Figure 10: Comparison of (cid:96)1 -norm and (cid:96)2 -norm based ﬁlter pruning for VGG-16 on CIFAR-10.
+6 .2 FLOP AND WA LL -C LOCK T IM E
+FLOP is a commonly used measure to compare the computation complexities of CNNs. It is easy to
+compute and can be done statically, which is independent of the underlying hardware and software
+implementations. Since we physically prune the ﬁlters by creating a smaller model and then copy the
+weights, there are no masks or sparsity introduced to the original dense BLAS operations. Therefore
+the FLOP and wall-clock time of the pruned model is the same as creating a model with smaller
+number of ﬁlters from scratch.
+We report the inference time of the original model and the pruned model on the test set of CIFAR-10
+and the validation set of ILSVRC 2012, which contains 10,000 32 × 32 images and 50,000 224 × 224
+images respectively. The ILSVRC 2012 dataset is used only for ResNet-34. The evaluation is
+conducted in Torch7 with Titan X (Pascal) GPU and cuDNN v5.1, using a mini-batch size 128. As
+shown in Table 3, the saved inference time is close to the FLOP reduction. Note that the FLOP
+number only considers the operations in the Conv and FC layers, while some calculations such as
+Batch Normalization and other overheads are not accounted.
+Table 3: The reduction of FLOP and wall-clock time for inference.
+34.2%
+Pruned % Time (s)
+1.23
+0.73
+1.31
+0.99
+2.38
+1.86
+36.02
+22.93
+24.2%
+27.6%
+38.6%
+Saved %
+40.7%
+24.4%
+21.8%
+28.0%
+FLOP
+Model
+VGG-16
+VGG-16-pruned-A
+ResNet-56
+ResNet-56-pruned-B
+ResNet-110
+ResNet-110-pruned-B 1.55 × 108
+ResNet-34
+ResNet-34-pruned-B
+3.13 × 108
+2.06 × 108
+1.25 × 108
+9.09 × 107
+2.53 × 108
+3.64 × 109
+2.76 × 109
+13

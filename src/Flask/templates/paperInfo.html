@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="icon" href="../../favicon.ico">
+
+    <title>Dashboard Template</title>
+
+    <!-- Bootstrap core CSS  右上角浏览器显示  和   外网访问-->
+    <!--<link href="../../bootstrap-3.3.7-dist/css/bootstrap.min.css" rel="stylesheet">-->
+    <link rel="stylesheet" href="{{ url_for('static', filename='bootstrap.min.css') }}" type="text/css">
+
+    <!-- Custom styles for this template -->
+    <link href="../static/dashboard.css" rel="stylesheet">
+
+
+</head>
+
+<body>
+
+<nav class="navbar navbar-inverse navbar-fixed-top">
+    <div class="container-fluid">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar"
+                    aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="#">Text Retrieval Database</a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav navbar-right">
+                <li><a href="#">item1</a></li>
+                <li><a href="#">Setting</a></li>
+                <li><a href="#">Profit</a></li>
+                <li><a href="#">Help</a></li>
+            </ul>
+            <form class="navbar-form navbar-right">
+                <input type="text" class="form-control" placeholder="Search..." name="navSearch">
+            </form>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-sm-3 col-md-2 sidebar">
+            <ul class="nav nav-sidebar">
+                <li><a href="/database/Overview">Overview</a></li>
+                <!--做多表关联 信息关联-->
+                <!-- 点击这个 返回某一个数据库的表 信息  href 链接  相对链接-->
+                <li class="active"><a href="/database/PaperInfo">PaperInfo <span class="sr-only">(current)</span> </a></li>
+                <li><a href="#">AuthorInfo</a></li>
+                <li><a href="#">Classification</a></li>
+                <li><a href="/database/MainInfo">MainInfo</a></li>
+            </ul>
+        </div>
+
+        <div class="col-sm-9 col-sm-offset-3 col-md-10 col-md-offset-2 main">
+            <h1 class="page-header">Database</h1>
+
+            <h2 class="sub-header">Paper Info Table</h2>
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <!--将来这是要变化的 不对 也可以 不变 用 左边的导航栏 来硬编码 数据表-->
+                    <thead>
+                    <tr>
+                        <th>Id#</th>
+                        <th>Title</th>
+                        <th>Author</th>
+                        <th>Abstract</th>
+                        <th>.....</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>{{ item.id }}</td>
+                            <td>{{ item.title }}</td>
+                            <td>{{ item.author }}</td>
+                            <td>{{ item.abstract }}</td>
+                            <td>{{ item.tobeadd }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Bootstrap core JavaScript
+================================================== -->
+<!-- Placed at the end of the document so the pages load faster -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+<script>window.jQuery || document.write('<script src="../../assets/js/vendor/jquery.min.js"><\/script>')</script>
+<script src="../../bootstrap-3.3.7-dist/js/bootstrap.min.js"></script>
+<!-- Just to make our placeholder images work. Don't actually copy the next line! -->
+<script src="../../assets/js/vendor/holder.min.js"></script>
+<!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
+<script src="../../assets/js/ie10-viewport-bug-workaround.js"></script>
+
+</body>
+
+</html>

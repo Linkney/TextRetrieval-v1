@@ -1,0 +1,1401 @@
+Exploring Generalization in Deep Learning
+Behnam Neyshabur, Srinadh Bhojanapalli, David McAllester, Nathan Srebro
+Toyota Technological Institute at Chicago
+{bneyshabur, srinadh, mcallester, nati}@ttic.edu
+7
+1
+0
+2
+l
+u
+J
+6
+]
+G
+L
+.
+s
+c
+[
+2
+v
+7
+4
+9
+8
+0
+.
+6
+0
+7
+1
+:
+v
+i
+X
+r
+a
+Abstract
+With a goal of understanding what drives generalization in deep networks, we
+consider several recently suggested explanations, including norm-based control,
+sharpness and robustness. We study how these measures can ensure generalization,
+highlighting the importance of scale normalization, and making a connection
+between sharpness and PAC-Bayes theory. We then investigate how well the
+measures explain different observed phenomena.
+1
+Introduction
+Learning with deep neural networks has enjoyed huge empirical success in recent years across a wide
+variety of tasks. Despite being a complex, non-convex optimization problem, simple methods such as
+stochastic gradient descent (SGD) are able to recover good solutions that minimize the training error.
+More surprisingly, the networks learned this way exhibit good generalization behavior, even when
+the number of parameters is signiﬁcantly larger than the amount of training data [19, 29].
+In such an over parametrized setting, the objective has multiple global minima, all minimize the
+training error, but many of them do not generalize well. Hence, just minimizing the training error is
+not sufﬁcient for learning: picking the wrong global minima can lead to bad generalization behavior.
+In such situations, generalization behavior depends implicitly on the algorithm used to minimize
+the training error. Different algorithmic choices for optimization such as the initialization, update
+rules, learning rate, and stopping condition, will lead to different global minima with different
+generalization behavior [6, 11, 17]. For example, Neyshabur et al. [17] introduced Path-SGD, an
+optimization algorithm that is invariant to rescaling of weights, and showed better generalization
+behavior over SGD for both feedforward and recurrent neural networks [17, 21]. Keskar et al. [11]
+noticed that the solutions found by stochastic gradient descent with large batch sizes generalizes
+worse than the one found with smaller batch sizes, and Hardt et al. [9] discuss how stochastic gradient
+descent ensures uniform stability, thereby helping generalization for convex objectives.
+What is the bias introduced by these algorithmic choices for neural networks? What ensures general-
+ization in neural networks? What is the relevant notion of complexity or capacity control?
+As mentioned above, simply accounting for complexity in terms of the number of parameters, or any
+measure which is uniform across all functions representable by a given architecture, is not sufﬁcient
+to explain the generalization ability of neural networks trained in practice. For linear models, norms
+and margin-based measures, and not the number of parameters, are commonly used for capacity
+control [4, 8, 24]. Also norms such as the trace norm and max norm are considered as sensible
+inductive biases in matrix factorization and are often more appropriate than parameter-counting
+measures such as the rank [26, 27]. In a similar spirit, Bartlett [2] and later Neyshabur et al. [19]
+suggested different norms of network parameters to measure the capacity of neural networks. In a
+different line of work, Keskar et al. [11] suggested “sharpness” (robustness of the training error to
+perturbations in the parameters) as a complexity measure for neural networks. Others, including
+Langford and Caruana [12] and more recently Dziugaite and Roy [7], propose a PAC-Bayes analysis.
+What makes a complexity measure appropriate for explaining generalization in deep learning?
+First, an appropriate complexity measure must be sufﬁcient in ensuring generalization. Second,
+networks learned in practice should be of low complexity under this measure. This can happen if our
+optimization algorithms bias us toward lower complexity models under this measure and it is possible
+to capture real data using networks of low complexity. In particular, the complexity measure should
+help explain several recently observed empirical phenomena that are not explained by a uniform
+notion of complexity:
+• It is possible to obtain zero training error on random labels using the same architecture
+for which training with real labels leads to good generalization [29]. We would expect
+the networks learned using real labels (and which generalizes well) to have much lower
+complexity, under the suggested measure, than those learned using random labels (and
+which obviously do not generalize well).
+• Increasing the number of hidden units, thereby increasing the number of parameters, can
+lead to a decrease in generalization error even when the training error does not decrease [19].
+We would expect to see the complexity measure decrease as we increase the number of
+hidden units.
+• When training the same architecture, with the same training set, using two different op-
+timization methods (or different algorithmic or parameter choices), one method results
+in better generalization even though both lead to zero training error [17, 11]. We would
+expect to see a correlation between the complexity measure and generalization ability among
+zero-training error models.
+In this paper we examine different complexity measures that have recently been suggested, or could
+be considered, in explaining generalization in deep learning. In light of the above, we evaluate the
+measures based on their ability to theoretically guarantee generalization, and their empirical ability
+to explain the above phenomena. Studying how each measure can guarantee generalization also let
+us better understand how it should be computed and compared when trying to explain the empirical
+phenomena.
+We investigate complexity measures including norms, robustness and sharpness of the network.
+We emphasize in our theoretical and empirical study the importance of relating the scale of the
+parameters and the scale of the output of the network, e.g. by relating norm and margin. In this light,
+we discuss how sharpness by itself is not sufﬁcient for ensuring generalization, but can be combined,
+through PAC-Bayes analysis, with the norm of the weights to obtain an appropriate complexity
+measure. The role of sharpness in PAC-Bayesian analysis of neural networks was also recently
+noted by Dziugaite and Roy [7], who used numerical techniques to numerically optimize the overall
+PAC-Bayes bound—here we emphasize the distinct role of sharpness as a balance for norm.
+In order to further understand the signiﬁcance of sharpness in deep learning, and how its relationship
+to margin deviates for that found in linear models, we also establish, in Section 4, sufﬁcient conditions
+on the network that provably ensures small sharpness.
+Notation
+i
+i
+Let fw (x) be the function computed by a d layer feed-forward network with parameters w and
+Rectiﬁed Linear Unit (ReLU) activations, fw (x) = Wd φ(Wd−1 φ(....φ(W1x))) where φ(z ) =
+max{0, z}. For a given x ∈ Rn , let Dx,w
+denote the diagonal {1, 0} matrix corresponding to
+(cid:1) x where we drop
+activation in layer i. To simplify the presentation we drop the x superscript and use Di instead. We
+can therefore write fw (x) = Wd Dd−1 Wd−1 · · · D1 W1 x = Wd
+the x, w superscript from Dx,w
+and use Di instead but remember that Di depends on x and the
+parameters Wj for any j ≤ i.
+(cid:96)(w, x). We also denote by L(w) the expected loss and by (cid:98)L(w) the empirical loss over the training
+Let hi be the number of nodes in layer i, with h0 = n. Therefore, for any layer i, we have
+Wi ∈ Rhi×hi−1 . Given any input x, the loss of the prediction by the function fw is then given by
+set. For any integer k , [k ] denotes the set {1, 2, · · · , k}. Finally, (cid:107).(cid:107)F , (cid:107).(cid:107)2 , (cid:107).(cid:107)1 , (cid:107).(cid:107)∞ denote
+Frobenius norm, the spectral norm, element-wise (cid:96)1 -norm and element-wise (cid:96)∞ norm respectively.
+(cid:0)Πd−1
+i=1 DiWi
+2
+2 Generalization and Capacity Control in Deep Learning
+In this section, we discuss complexity measures that have been suggested, or could be used for capacity
+control in neural networks. We discuss advantages and weaknesses of each of these complexity
+measures and examine their abilities to explain the observed generalization phenomena in deep
+learning.
+We consider the statistical capacity of a model class in terms of the number of examples required to
+ensure generalization, i.e. that the population (or test error) is close to the training error, even when
+minimizing the training error. This also roughly corresponds to the maximum number of examples
+on which one can obtain small training error even with random labels.
+Given a model class H, such as all the functions representable by some feedforward or convolutional
+networks, one can consider the capacity of the entire class H—this corresponds to learning with
+a uniform “prior” or notion of complexity over all models in the class. Alternatively, we can also
+consider some complexity measure, which we take as a mapping that assigns a non-negative number
+to every hypothesis in the class - M : {H, S } → R+ , where S is the training set. It is then sufﬁcient
+to consider the capacity of the restricted class HM,α = {h : h ∈ H, M(h) ≤ α} for a given α ≥ 0.
+One can then ensure generalization of a learned hypothesis h in terms of the capacity of HM,M(h) .
+M) can then be sufﬁcient for learning, even if the capacity of the entire H is high. And if we are
+Having a good hypothesis with low complexity, and being biased toward low complexity (in terms of
+indeed relying on M for ensuring generalization (and in particular, biasing toward models with lower
+complexity under M), we would expect a learned h with lower value of M(h) to generalize better.
+For some of the measures discussed, we allow M to depend also on the training set. If this is done
+carefully, we can still ensure generalization for the restricted class HM,α .
+We will consider several possible complexity measures. For each candidate measure, we ﬁrst investi-
+gate whether it is sufﬁcient for generalization, and analyze the capacity of HM,α . Understanding the
+capacity corresponding to different complexity measures also allows us to relate between different
+measures and provides guidance as to what and how we should measure: From the above discussion,
+it is clear that any monotone transformation of a complexity measures leads to an equivalent notion
+of complexity. Furthermore, complexity is meaningful only in the context of a speciﬁc hypothesis
+class H, e.g. speciﬁc architecture or network size. The capacity, as we consider it (in units of sample
+complexity), provides a yardstick by which to measure complexity (we should be clear though, that
+we are vague regarding the scaling of the generalization error itself, and only consider the scaling
+in terms of complexity and model class, thus we obtain only a very crude yardstick sufﬁcient for
+investigating trends and relative phenomena, not a quantitative yardstick).
+2.1 Network Size
+For any model, if its parameters have ﬁnite precision, its capacity is linear in the total number of
+parameters. Even without making an assumption on the precision of parameters, the VC dimension
+of feedforward networks can be bounded in terms of the number of parameters dim(w)[1, 2, 5, 22].
+In particular, Bartlett [3] and Harvey et al. [10], following Bartlett et al. [5], give the following tight
+(up to logarithmic factors) bound on the VC dimension and hence capacity of feedforward networks
+with ReLU activations:
+VC-dim = ˜O(d ∗ dim(w))
+(1)
+In the over-parametrized settings, where the number of parameters is more than the number of
+samples, complexity measures that depend on the total number of parameters are too weak and
+cannot explain the generalization behavior. Neural networks used in practice often have signiﬁcantly
+more parameters than samples, and indeed can perfectly ﬁt even random labels, obviously without
+generalizing [29]. Moreover, measuring complexity in terms of number of parameters cannot explain
+the reduction in generalization error as the number of hidden units increase [19] (see also Figure
+Figure 4).
+2.2 Norms and Margins
+Capacity of linear predictors can be controlled independent of the number of parameters, e.g. through
+regularization of its (cid:96)2 norm. Similar norm based complexity measures have also been established for
+feedforward neural networks with ReLU activations. For example, capacity can be bounded based
+3
+i=1 (cid:107)Wi (cid:107)2
+i=1 (cid:107)Wi (cid:107)2
+(cid:81)d
+(cid:81)d
+on the (cid:96)1 norm of the weights of hidden units in each layer, and is proportional to (cid:81)d
+1,∞ ,
+where (cid:107)Wi(cid:107)1,∞ is the maximum over hidden units in layer i of the (cid:96)1 norm of incoming weights to
+the hidden unit [4]. More generally Neyshabur et al. [18] considered group norms (cid:96)p,q corresponding
+to (cid:96)q norm over hidden units of (cid:96)p norm of incoming weights to the hidden unit. This includes
+(cid:96)2,2 which is equivalent to the Frobenius norm where the capacity of the network is proportional to
+F . They further motivated a complexity measure that is invariant to node-wise rescaling
+reparametrization 1 , suggesting (cid:96)p path norms which is the minimum over all node-wise rescalings of
+i=1 (cid:107)Wi (cid:107)p,∞ and is equal to (cid:96)p norm of a vector with coordinates each of which is the product of
+weights along a path from an input node to an output node in the network.
+Capacity control in terms of norm, when using a zero/one loss (i.e. counting errors) requires us in
+addition to account for scaling of the output of the neural networks, as the loss is insensitive to this
+scaling but the norm only makes sense in the context of such scaling. For example, dividing all the
+weights by the same number will scale down the output of the network but does not change the 0/1
+loss, and hence it is possible to get a network with arbitrary small norm and the same 0/1 loss. Using
+a scale sensitive losses, such as the cross entropy loss, does address this issue (if the outputs are scaled
+down toward zero, the loss becomes trivially bad), and one can obtain generalization guarantees in
+terms of norm and the cross entropy loss.
+However, we should be careful when comparing the norms of different models learned by minimizing
+the cross entropy loss, in particular when the training error goes to zero. When the training error goes
+to zero, in order to push the cross entropy loss (or any other positive loss that diminish at inﬁnity)
+to zero, the outputs of the network must go to inﬁnity, and thus the norm of the weights (under any
+norm) should also go to inﬁnity. This means that minimizing the cross entropy loss will drive the
+norm toward inﬁnity. In practice, the search is terminated at some ﬁnite time, resulting in large,
+but ﬁnite norm. But the value of this norm is mostly an indication of how far the optimization is
+allowed to progress—using a stricter stopping criteria (or higher allowed number of iterations) would
+yield higher norm. In particular, comparing the norms of models found using different optimization
+approaches is meaningless, as they would all go toward inﬁnity.
+Instead, to meaningfully compare norms of the network, we should explicitly take into account the
+scaling of the outputs of the network. One way this can be done, when the training error is indeed
+zero, is to consider the “margin” of the predictions in addition to the norms of the parameters. We
+refer to the margin for a single data point x as the difference between the score of the correct label
+and the maximum score of other labels, i.e.
+fw (x)[ytrue ] − max
+y (cid:54)=ytrue
+fw (x)[y ]
+(2)
+In order to measure scale over an entire training set, one simple approach is to consider the “hard
+margin”, which is the minimum margin among all training points. However, this deﬁnition is very
+sensitive to extreme points as well as to the size of the training set. We consider instead a more
+robust notion that allows a small portion of data points to violate the margin. For a given training
+set and small value  > 0, we deﬁne the margin γmargin as the lowest value of γ such that (cid:100)m(cid:101) data
+point have margin lower than γ where m is the size of the training set. We found empirically that the
+qualitative and relative nature of our empirical results is almost unaffected by reasonable choices of 
+(e.g. between 0.001 and 0.1).
+The norm-based measures we investigate in this work and their corresponding capacity bounds are as
+follows 2 :
+• (cid:96)2 norm with capacity proportional to
+(cid:81)d
+i=1 4 (cid:107)Wi(cid:107)2
+F [18].
+1
+γ 2
+margin
+1Node-rescaling can be deﬁned as a sequence of reparametrizations, each of which corresponds to multiplying
+incoming weights and dividing outgoing weights of a hidden unit by a positive scalar α. The resulting network
+computes the same function as the network before the reparametrization.
+2We have dropped the term that only depend on the norm of the input. The bounds based on (cid:96)2 -path norm
+and spectral norm can be derived directly from the those based on (cid:96)1 -path norm and (cid:96)2 norm respectively.
+Without further conditions on weights, exponential dependence on depth is tight but the 4d dependence might be
+loose [18]. We will also discuss a rather loose bound on the capacity based on the spectral norm in Section 2.3.
+4
+(cid:96)2 norm
+(cid:96)1 -path norm
+(cid:96)2 -path norm
+spectral norm
+(cid:12)(cid:12)(cid:12)(cid:17)2
+(cid:16)(cid:80)
+(cid:80)
+(cid:81)d
+j∈(cid:81)d
+j∈(cid:81)d
+(cid:12)(cid:12)(cid:12)(cid:81)d
+(cid:81)d
+2 .
+Figure 1: Comparing different complexity measures on a VGG network trained on subsets of CIFAR10
+dataset with true (blue line) or random (red line) labels. We plot norm divided by margin to avoid scal-
+ing issues (see Section 2), where for each complexity measure, we drop the terms that only depend on
+j∈(cid:81)d
+−2
+depth or number of hidden units; e.g. for (cid:96)2 -path norm we plot γ
+also set the margin over training set S to be 5th -percentile of the margins of the data points in S , i.e.
+Prc5 {fw (xi )[yi ] − maxy (cid:54)=yi fw (x)[y ]|(xi , yi ) ∈ S }. In all experiments, the training error of the learned
+network is zero. The plots indicate that these measures can explain the generalization as the complexity of model
+learned with random labels is always higher than the one learned with true labels. Furthermore, the gap between
+the complexity of models learned with true and random labels increases as we increase the size of the training
+set.
+i [ji , ji−1 ].We
+(cid:81)d
+i=1 W 2
+(cid:80)
+k=0 [hk ]
+margin
+margin
+margin
+1
+γ 2
+margin
+[4,
+1
+γ 2
+1
+γ 2
+k=0 [hk ]
+k=0 [hk ]
+i=1 4hiW 2
+i [ji , ji−1 ].
+i=1 2Wi [ji , ji−1 ]
+i=1 hi (cid:107)Wi (cid:107)2
+• (cid:96)1 -path norm with capacity proportional to
+18].
+• (cid:96)2 -path norm with capacity proportional to
+where (cid:81)d
+• spectral norm with capacity proportional to
+k=0 [hk ] is the Cartesian product over sets [hk ]. The above bounds indicate that capacity can
+be bounded in terms of either (cid:96)2 -norm or (cid:96)1 -path norm independent of number of parameters. The
+(cid:96)2 -path norm dependence on the number of hidden units in each layer is unavoidable. However, it
+is not clear that the dependence on the number of parameters is needed for the bound based on the
+spectral norm.
+As an initial empirical investigation of the appropriateness of the different complexity measures,
+we compared the complexity (under each of the above measures) of models trained on true versus
+random labels. We would expect to see two phenomena: ﬁrst, the complexity of models trained
+on true labels should be substantially lower than those trained on random labels, corresponding to
+their better generalization ability. Second, when training on random labels, we expect capacity to
+increase almost linearly with the number of training examples, since every extra example requires
+new capacity in order to ﬁt it’s random label. However, when training on true labels we expect the
+model to capture the true functional dependence between input and output and thus ﬁtting more
+training examples should only require small increases in the capacity of the network. The results are
+reported in Figure 1. We indeed observe a gap between the complexity of models learned on real and
+random labels for all four norms, with the difference in increase in capacity between true and random
+labels being most pronounced for the (cid:96)2 norm and (cid:96)2 -path norm.
+In Section 3 we present further empirical investigations of the appropriateness of these complexity
+measures to explaining other phenomena.
+2.3 Lipschitz Continuity and Robustness
+The measures/norms we discussed so far also control the Lipschitz constant of the network with
+respect to its input. Is the capacity control achieved through the bound on the Lipschitz constant? Is
+bounding the Lipschitz constant alone enough for generalization? To answer these questions, and in
+order to understand capacity control in terms of Lipschitz continuity more broadly, we review here
+the relevant guarantees.
+Given an input space X and metric M, a function f : X → R on a metric space (X , M) is
+called a Lipschitz function if there exists a constant CM , such that |f (x) − f (y)| ≤ CMM(x, y).
+Luxburg and Bousquet [13] studied the capacity of functions with bounded Lipschitz constant on
+5
+(cid:17)n
+(cid:16) CM
+γmargin
+metric space (X , M) with a ﬁnite diameter diamM (X ) = supx,y∈X M(x, y) and showed that the
+diamM (X ). This capacity bound is weak as it has an exponential
+capacity is proportional to
+dependence on input size.
+Another related approach is through algorithmic robustness as suggested by Xu and Mannor [28].
+Given  > 0, the model fw found by a learning algorithm is K robust if X can be partitioned into K
+disjoint sets, denoted as {Ci }K
+i=1 , such that for any pair (x, y) in the training set s ,3
+x, z ∈ Ci ⇒ |(cid:96)(w, x) − (cid:96)(w, z)| ≤ 
+(3)
+Xu and Mannor [28] showed the capacity of a model class whose models are K -robust scales as K .
+For the model class of functions with bounded Lipschitz C(cid:107).(cid:107) , K is proportional to C(cid:107).(cid:107)
+-covering
+number of the input domain X under norm (cid:107).(cid:107). However, the covering number of the input domain
+bounded by (cid:81)d
+can be exponential in the input dimension and the capacity can still grow as
+i=1 (cid:107)Wi (cid:107)1,∞ (hence (cid:96)1 -path norm) and (cid:81)d
+4 .
+Returning to our original question, the C(cid:96)∞ and C(cid:96)2 Lipschitz constants of the network can be
+i=1 (cid:107)Wi (cid:107)2 , respectively [28, 25]. This will
+result in a very large capacity bound that scales as
+, which is exponential in both the
+input dimension and depth of the network. This shows that simply bounding the Lipschitz constant
+of the network is not enough to get a reasonable capacity control, and the capacity bounds of the
+previous Section are not merely a consequence of bounding the Lipschitz constant.
+(cid:16) C(cid:107).(cid:107)
+(cid:16) (cid:81)d
+i=1 (cid:107)Wi (cid:107)2
+(cid:17)n
+(cid:17)n
+γmargin
+γmargin
+γmargin
+2.4 Sharpness
+(cid:39)
+max
+ζα (w) =
+|νi |≤α(|wi |+1)
+(cid:98)L(fw+ν ) − (cid:98)L(fw ),
+max|νi |≤α(|wi |+1) (cid:98)L(fw+ν ) − (cid:98)L(fw )
+1 + (cid:98)L(fw )
+The notion of sharpness as a generalization measure was recently suggested by Keskar et al. [11] and
+corresponds to robustness to adversarial perturbations on the parameter space:
+where the training error (cid:98)L(fw ) is generally very small in the case of neural networks in practice, so
+(4)
+we can simply drop it from the denominator without a signiﬁcant change in the sharpness value.
+As we will explain below, sharpness deﬁned this way does not capture the generalization behavior.
+To see this, we ﬁrst examine whether sharpness can predict the generalization behavior for networks
+trained on true vs random labels. In the left plot of Figure 2, we plot the sharpness for networks
+trained on true vs random labels. While sharpness correctly predicts the generalization behavior for
+bigger networks, for networks of smaller size, those trained on random labels have less sharpness
+than the ones trained on true labels. Furthermore sharpness deﬁned above depends on the scale of w
+and can be artiﬁcially increased or decreased by changing the scale of the parameters. Therefore,
+sharpness alone is not sufﬁcient to control the capacity of the network.
+Instead, we advocate viewing a related notion of expected sharpness in the context of the PAC-
+Bayesian framework. Viewed this way, it becomes clear that sharpness controls only one of two
+relevant terms, and must be balanced with some other measure such as norm. Together, sharpness and
+norm do provide capacity control and can explain many of the observed phenomena. This connection
+between sharpness and the PAC-Bayes framework was also recently noted by Dziugaite and Roy [7].
+The PAC-Bayesian framework [15, 16] provides guarantees on the expected error of a randomized
+predictor (hypothesis), drawn form a distribution denoted Q and sometimes referred to as a “posterior”
+(although it need not be the Bayesian posterior), that depends on the training data. Let fw be any
+predictor (not necessarily a neural network) learned from training data. We consider a distribution
+Q over predictors with weights of the form w + ν , where w is a single predictor learned from the
+training set, and ν is a random variable. Then, given a “prior” distribution P over the hypothesis that
+is independent of the training data, with probability at least 1 − δ over the draw of the training data,
+the expected error of fw+ν can be bounded as follows [14]:
+Eν [L(fw+ν )] ≤ Eν [ (cid:98)L(fw+ν )] +
+Eν [ (cid:98)L(fw+ν )]K + K
+(cid:113)
+(5)
+3Xu and Mannor [28] have deﬁned the robustness as a property of learning algorithm given the model class
+and the training set. Here since we are focused on the learned model, we introduce it as a property of the model.
+4Similar to margin-based bounds, we drop the term that depends on the diameter of the input space.
+6
+true labels
+random labels
+Figure 2: Sharpness and PAC-Bayes measures on a VGG network trained on subsets of CIFAR10 dataset with
+true or random labels. In the left panel, we plot max sharpness, which we calculate as suggested by Keskar
+et al. [11] where the perturbation for parameter wi has magnitude 5.10−4 (|wi | + 1). The middle and right plots
+demonstrate the relationship between expected sharpness and KL divergence in PAC-Bayes analysis for true and
+where the standard deviation of the perturbation for the parameter i is α(10 |wi | + 1). The corresponding K L
+random labels respectively. For PAC-Bayes plots, each point in the plot correspond to a choice of variable α
+to each α is nothing but weighted (cid:96)2 norm where the weight for each parameter is the inverse of the standard
+deviation of the perturbation.
+. When the training loss Eν [ (cid:98)L(fw+ν )] is smaller than K, then the
+where K =
+last term dominates. This is often the case for neural networks with small enough perturbation. One
+can also get the the following weaker bound:
+2(KL(w+ν (cid:107)P )+ln 2m
+m−1
+δ )
+(cid:115) (cid:0)K L (w + ν (cid:107)P ) + ln 2m
+Eν [L(fw+ν )] ≤ Eν [ (cid:98)L(fw+ν )] + 4
+m
+δ
+(cid:1)
+The above inequality clearly holds for K ≥ 1 and for K < 1 it can be derived from Equation (5) by
+upper bounding the loss in the second term by 1. We can rewrite the above bound as follows:
+(6)
+Eν [L(fw+ν )] ≤ (cid:98)L(fw ) + Eν [ (cid:98)L(fw+ν )] − (cid:98)L(fw )
+(cid:124)
+(cid:123)(cid:122)
+expected sharpness
+(cid:115)
+(cid:18)
+(cid:125)
++4
+(cid:19)
+1
+m
+K L (w + ν (cid:107)P ) + ln
+2m
+δ
+(7)
+As we can see, the PAC-Bayes bound depends on two quantities - i) the expected sharpness and ii) the
+Kullback Leibler (KL) divergence to the “prior” P . The bound is valid for any distribution measure
+P , any perturbation distribution ν and any method of choosing w dependent on the training set. A
+simple way to instantiate the bound is to set P to be a zero mean, σ2 variance Gaussian distribution.
+Choosing the perturbation ν to also be a zero mean spherical Gaussian with variance σ2 in every
+direction, yields the following guarantee (w.p. 1 − δ over the training set):
+Eν∼N (0,σ)n [L(fw+ν )] ≤ (cid:98)L(fw ) + Eν∼N (0,σ)n [ (cid:98)L(fw+ν )] − (cid:98)L(fw )
+(cid:124)
+(cid:123)(cid:122)
+expected sharpness
+(cid:118)(cid:117)(cid:117)(cid:117)(cid:116) 1
+m
+(cid:18) (cid:107)w(cid:107)2
+(cid:124) (cid:123)(cid:122) (cid:125)
+2σ2
+2
+KL
+(cid:125)
++4
+(cid:19)
++ ln
+2m
+δ
+,
+(8)
+i
+i
+i
+w2
+2σ2
+expression changes to (cid:80)
+Another interesting approach is to set the variance of the perturbation to each parameter with respect
+to the magnitude of the parameter. For example if σi = α |wi | + β , then the KL term in the above
+.
+The above generalization guarantees give a clear way to think about capacity control jointly in terms
+of both the expected sharpness and the norm, and as we discussed earlier indicates that sharpness by
+itself cannot control the capacity without considering the scaling. In the above generalization bound,
+norms and sharpness interact in a direct way depending on σ , as increasing the norm by decreasing
+σ causes decrease in sharpness and vice versa. It is therefore important to ﬁnd the right balance
+between the norm and sharpness by choosing σ appropriately in order to get a reasonable bound on
+the capacity.
+In our experiments we observe that looking at both these measures jointly indeed makes a better pre-
+dictor for the generalization error. As discussed earlier, Dziugaite and Roy [7] numerically optimize
+the overall PAC-Bayes generalization bound over a family of multivariate Gaussian distributions
+(different choices of perturbations and priors). Since the precise way the sharpness and KL-divergence
+7
+are combined is not tight, certainly not in (8), nor in the more reﬁned bound used by Dziugaite and
+Roy [7], we prefer shying away from numerically optimizing the balance between sharpness and the
+KL-divergence. Instead, we propose using bi-criteria plots, where sharpness and KL-divergence are
+plotted against each other, as we vary the perturbation variance. For example, in the center and right
+panels of Figure 2 we show such plots for networks trained on true and random labels respectively.
+We see that although sharpness by itself is not sufﬁcient for explaining generalization in this setting
+(as we saw in the left panel), the bi-criteria plots are signiﬁcantly lower for the true labels. Even more
+so, the change in the bi-criteria plot as we increase the number of samples is signiﬁcantly larger with
+random labels, correctly capturing the required increase in capacity. For example, to get a ﬁxed value
+of expected sharpness such as  = 0.05, networks trained with random labels require higher norm
+compared to those trained with true labels. This behavior is in agreement with our earlier discussion,
+that sharpness is sensitive to scaling of the parameters and is not a capacity control measure as it can
+be artiﬁcially changed by scaling the network. However, combined with the norm, sharpness does
+seem to provide a capacity measure.
+3 Empirical Investigation
+In this section we investigate the ability of the discussed measures to explain the the generalization
+phenomenon discussed in the Introduction. We already saw in Figures 1 and 2 that these measures
+capture the difference in generalization behavior of models trained on true or random labels, including
+the increase in capacity as the sample size increases, and the difference in this increase between true
+and random labels.
+Different Global Minima
+Given different global minima of the training loss on the same training set and with the same model
+class, can these measures indicate which model is going to generalize better? In order to verify this
+property, we can calculate each measure on several different global minima and see if lower values
+of the measure imply lower generalization error. In order to ﬁnd different global minima for the
+training loss, we design an experiment where we force the optimization methods to converge to
+different global minima with varying generalization abilities by forming a confusion set that includes
+samples with random labels. The optimization is done on the loss that includes examples from
+both the confusion set and the training set. Since deep learning models have very high capacity, the
+optimization over the union of confusion set and training set generally leads to a point with zero error
+over both confusion and training sets which thus is a global minima for the training set.
+We randomly select a subset of CIFAR10 dataset with 10000 data points as the training set and
+our goal is to ﬁnd networks that have zero error on this set but different generalization abilities on
+the test set. In order to do that, we train networks on the union of the training set with ﬁxed size
+10000 and confusion sets with varying sizes that consists of CIFAR10 samples with random labels;
+and we evaluate the learned model on an independent test set. The trained network achieves zero
+training error but as shown in Figure 3, the test error of the model increases with increasing size of
+the confusion set. The middle panel of this Figure suggests that the norm of the learned networks can
+indeed be predictive of their generalization behavior. However, we again observe that sharpness has
+a poor behavior in these experiments. The right panel of this ﬁgure also suggests that PAC-Bayes
+measure of joint sharpness and KL divergence, has better behavior - for a ﬁxed expected sharpness,
+networks that have higher generalization error, have higher norms.
+Increasing Network Size
+We also repeat the experiments conducted by Neyshabur et al. [19] where a fully connected feedfor-
+ward network is trained on MNIST dataset with varying number of hidden units and we check the
+values of different complexity measures on each of the learned networks.The left panel in Figure 4
+shows the training and test error for this experiment. While 32 hidden units are enough to ﬁt the train-
+ing data, we observe that networks with more hidden units generalize better. Since the optimization
+is done without any explicit regularization, the only possible explanation for this phenomenon is the
+implicit regularization by the optimization algorithm. Therefore, we expect a sensible complexity
+measure to decrease beyond 32 hidden units and behave similar to the test error. Different measures
+are reported for learned networks. The middle panel suggest that all margin/norm based complexity
+8
+Figure 3: Experiments on global minima with poor generalization. For each experiment, a VGG network is
+trained on union of a subset of CIFAR10 dataset with size 10000 containing samples with true labels and another
+subset of CIFAR10 datasets with varying size containing random labels. The learned networks are all global
+minima for the objective function on the subset with true labels. The left plot indicates the training and test
+errors based on the size of the set with random labels. The plot in the middle shows change in different measures
+based on the size of the set with random labels. The plot on the right indicates the relationship between expected
+sharpness and KL in PAC-bayes for each of the experiments. Measures are calculated as explained in Figures 1
+and 2.
+Figure 4: The generalization of two layer perceptron trained on MNIST dataset with varying number of hidden
+units. The left plot indicates the training and test errors. The test error decreases as the size increases. The middle
+plot shows different measures for each of the trained networks. The plot on the right indicates the relationship
+between expected sharpness and KL in PAC-Bayes for each of the experiments. Measures are calculated as
+explained in Figures 1 and 2.
+measures decrease for larger networks up to 128 hidden units. For networks with more hidden units,
+(cid:96)2 norm and (cid:96)1 -path norm increase with the size of the network. The middle panel suggest that
+(cid:96)2 -path norm can provide some explanation for this phenomenon. However, as we discussed in
+Section 2, the actual complexity measure based on (cid:96)2 -path norm also depends on the number of
+hidden units and taking this into account indicates that the measure based on (cid:96)2 -path norm cannot
+explain this phenomenon. This is also the case for the margin based measure that depends on the
+spectral norm. In subsection 2.3 we discussed another complexity measure that also depends the
+spectral norm through Lipschitz continuity or robustness argument. Even though this bound is very
+loose, it is monotonic with respect to the spectral norm that is reported in the plots. Unfortunately,
+we do observe some increase in spectral norm by increasing number of hidden units beyond 512.
+The right panel shows that the joint PAC-Bayes measure decrease for larger networks up to size 128
+but fails to explain this generalization behavior for larger networks. This suggests that the measures
+looked so far are not sufﬁcient to explain all the generalization phenomenon observed in neural
+networks.
+4 Bounding Sharpness
+So far we have discussed margin based and sharpness based complexity measures to understand
+capacity. We have also discussed how sharpness based complexity measures in combination with
+norms characterize the generalization behavior under the PAC-Bayes framework. In this section
+we study the question of what affects the sharpness of neural networks? For the case of linear
+predictors, sharpness only depends on the norm of the predictor. In contrast, for multilayered
+networks, interaction between the layers plays a major role and consequently two different networks
+with the same norm can have drastically different sharpness values. For example, consider a network
+9
+where some subset of the layers despite having non-zero norm interact weakly with their neighbors,
+or are almost orthogonal to each other. Such a network will have very high sharpness value compared
+to a network where the neighboring layers interact strongly.
+In this section we establish sufﬁcient conditions to bound the expected sharpness of a feedforward
+network with ReLU activations. Such conditions serve as a useful guideline in studying what
+helps an optimization method to converge to less sharp optima. Unlike existing generalization
+bounds [4, 18, 13, 28, 25], our sharpness based bound does not suffer from exponential dependence
+on depth.
+Now we discuss the conditions that affect the sharpness of a network. As discussed earlier, weak
+interactions between layers can cause the network to have high sharpness value. Condition C 1 below
+prevents such weak interactions (cancellations). A network can also have high sharpness if the
+changes in the number of activations is exponential in the perturbations to its weights, even for small
+perturbations. Condition C 2 avoids such extreme situations on activations. Finally, if a non-active
+node with large weights becomes active because of the perturbations in lower layers, that can lead to
+huge changes to the output of the network. Condition C 3 prevents having such spiky (in magnitude)
+hidden units. This leads us to the following three conditions, that help in avoiding such pathological
+(C 1) : Given x, let x = W0 and D0 = I . Then, for all 0 ≤ a < c < b ≤ d, (cid:107) (cid:0)Πb
+cases.
+µ√
+(C 2) : Given x, for any level k , 1
+(C 3) : For all i, (cid:107)Wi (cid:107)2
+F .
+Here, Wk,i denotes the weights of the ith output node in layer k . (cid:107)Wi (cid:107)2,∞ denotes the maximum
+L2 norm of a hidden unit in layer i. Now we state our result on the generalization error of a ReLU
+network, in terms of average sharpness and its norm. Let (cid:107)x(cid:107) = 1 and h = maxd
+Theorem 1. Let νi be a random hi × hi−1 matrix with each entry distributed according to N (0, σ2
+Then, under the conditions C 1, C 2, C 3, with probability ≥ 1 − δ ,
+i=c+1DiWi (cid:107)F (cid:107) (Πc
+i=aDiWi ) (cid:107)F .
+j=1 Dj Wj x≤δ ≤ C2 δ .
+i∈[hk ] 1Wk,iΠk−1
+2,∞hi ≤ C 2
+3 (cid:107)DiWi (cid:107)2
+(cid:1) (cid:107)F ≥
+i=aDiWi
+(cid:80)
+i=1 hi .
+(cid:107)Πb
+hk
+hc
+i ).
+(cid:33)
++
+(cid:107)fw (x)(cid:107)F
+m
+(cid:118)(cid:117)(cid:117)(cid:116) 1
+m
+(cid:88)
+x
+(cid:32) d(cid:88)
+i=1
+(cid:107)Wi (cid:107)2
+σ2
+F
+i
+(cid:33)
+.
++ ln
+2m
+δ
+Eν∼N (0,σ)n [L(fw+ν )] − (cid:98)L(fw ) ≤ O
+Πd
+i=1 (1 + γiCδ C2 ) − 1
++Πd
+i=1 (1 + γiC2C3 )
+(cid:16)
+(cid:17)(cid:105)
+i=1 (1 + γi ) − 1
+Πd
+(cid:16)(cid:104)
+where γi =
+CL
+√
+√
+σi
+hi
+hi−1
+µ2 (cid:107)Wi (cid:107)F
+and Cδ = 2(cid:112)ln(dh/δ).
+Eν∼N (0,σ)n [L(fw+ν )] − (cid:98)L(fw ) ≤ O
+(cid:18)
+To understand the above generalization error bound, consider choosing γi = σ
+Cδ d , and we get a bound
+that simpliﬁes as follows:
+(cid:19)
+(cid:80)
+x (cid:107)fw (x)(cid:107)F
+m
+(cid:33)
+σ (1 + (1 + σC2C3 )C2 ) CL
+(cid:32)
+(cid:118)(cid:117)(cid:117)(cid:116) 1
+m
+d2
+µ4
++
+d(cid:88)
+i=1
+hihi−1
+σ2 + ln
+2m
+δ
+If we choose large σ , then the network will have higher expected sharpness but smaller ’norm’ and
+vice versa. Now one can optimize over the choice of σ to balance between the terms on the right hand
+side and get a better capacity bound. For any reasonable choice of σ , the generalization error above,
+depends only linearly on depth and does not have any exponential dependence, unlike other notions
+of generalization. Also the error gets worse with decreasing µ and increasing C2 , C3 as the sharpness
+of the network increases which is in accordance with our discussion of the conditions above.
+Additionally the conditions C 1 − C 3 actually hold for networks trained in practice as we verify in
+Figure 5, and our experiments suggest that, µ ≥ 1/4, C 2 ≤ 5 and C 3 ≤ 3. More details on the
+veriﬁcation and comparing the conditions on learned network with those of random weights, are
+presented in the appendix.
+10
+Figure 5: Verifying the conditions of Theorem 1 on a 10 layer perceptron with 1000 hidden units in each layer,
+i.e. more than 10,000,000 parameters on MNIST. We have numerically checked that all values are within the
+displayed range. Left: C 1: condition number of the network, i.e. 1
+µ . Middle: C 2: the ratio of activations that
+ﬂip based on magnitude of perturbation. Right: C 3 : the ratio of norm of incoming weights to each hidden units
+with respect to average of the same quantity over hidden units in the layer.
+(i)
+(cid:12)(cid:12)(cid:12)
+(cid:16)
+(cid:16)
+i=1 DiWi
+(cid:1) ∗ x(cid:107)F
+(cid:1) ∗ x(cid:107)F
+Proof of Theorem 1 We bound the expectation as follows:
+(cid:17) ∗ x − Wd
+(cid:1) ∗ x − Wd
+(cid:1) ∗ x − Wd
+E (cid:12)(cid:12)(cid:12) (cid:98)L(fw+ν (x)) − (cid:98)L(fw (x))
+≤ CLE(cid:107)fw+ν (x) − fw (x)(cid:107)F
+i=1 (cid:98)Di (W + ν )i
+(cid:0)Πd−1
+= CLE(cid:107)(W + ν )d
+(cid:0)Πd−1
+Πd−1
+(cid:0)Πd−1
+(cid:17) ∗ x − (W + ν )d
+(cid:0)Πd−1
+≤ CLE(cid:107)(W + ν )d
+i=1 Di (W + ν )i
+i=1 (cid:98)Di (W + ν )i
++ CLE(cid:107)(W + ν )d
+(cid:0)Πd−1
+Πd−1
+(cid:0)Πd−1
+(cid:1) ∗ x(cid:107)F + CLE(cid:107)E rrd (cid:107)F ,
+i=1 Di (W + ν )i
+≤ CLE(cid:107)(W + ν )d
+i=1 Di (W + ν )i
+i=1 (cid:98)Di (W + ν )i
+(cid:17) ∗ x − (W + ν )d
+(cid:0)Πd−1
+(cid:1) ∗ x(cid:107)F . (i)
+where E rrd = (cid:107)(W + ν )d
+Πd−1
+i=1 Di (W + ν )i
+(9)
+(cid:98)Di is the diagonal matrix with 0’s and 1’s corresponding to the activation pattern of the perturbed
+network fw+ν (x).
+The ﬁrst term in the equation (9) corresponds to error due to perturbation of a network with unchanged
+activations (linear network). Intuitively this is small when any subset of successive layers of the
+network do no interact weakly with each other (not orthogonal to each other). Condition C 1 captures
+this intuition and we bound this error in Lemma 10.
+Lemma 1. Let νi be a random hi × hi−1 matrix with each entry distributed according to N (0, σ2
+Then, under the condition C 1,
+(cid:1) ∗ x(cid:107)F
+i=1 DiWi
+i=1 DiWi
+(cid:16)
+i ).
+(cid:0)Πd−1
+i=1 Di (W + ν )i
+E(cid:107)(W + ν )d
+(cid:1) ∗ x − Wd
+≤
+(cid:0)Πd−1
+Πd
+(cid:32)
+i=1 DiWi
+(cid:32)
+i=1
+1 +
+(cid:1) ∗ x(cid:107)F
+(cid:33)
+(cid:112)hihi−1
+µ2(cid:107)DiWi(cid:107)F
+σi
+(cid:33)
+− 1
+(cid:107)fw (x)(cid:107)F .
+The second term in the equation (9) captures the perturbation error due to change in activations. If a
+tiny perturbation can cause exponentially many changes in number of active nodes, then that network
+will have huge sharpness. Condition C 2 and C 3 essentially characterize the behavior of sensitivity of
+activation patterns to perturbations, leading to a bound on this term in Lemma 2.
+Lemma 2. Let νi be a random hi × hi−1 matrix with each entry distributed according to N (0, σ2
+Then, under the conditions C 1, C 2 and C 3, with probability ≥ 1 − δ , for all 1 ≤ k ≤ d,
+i ).
+(cid:107) (cid:98)Dk − Dk (cid:107)1 ≤ O (cid:0)C2hkCδ σk (cid:107)f k−1
+E(cid:107)E rrk (cid:107)F ≤ O (cid:0)Πk
+i=1 (1 + γiC2C3 ) (cid:0)Πk
+i=1 (1 + γiCδ C2 ) − 1(cid:1) (cid:107)f k
+and Cδ = 2(cid:112)ln(dh/δ).
+w (cid:107)F
+(cid:1)
+√
+σi
+hi
+hi−1
+µ2 (cid:107)DiWi (cid:107)F
+√
+(cid:1) .
+w (cid:107)F
+and
+where γi =
+11
+Hence, from Lemma 10 and Lemma 2 we get,
+E (cid:12)(cid:12)(cid:12) (cid:98)L(fw+ν (x)) − (cid:98)L(fw (x))
+i=1 (1 + γi ) − 1 + Πd
+Πd
+i=1 (1 + γiC2C3 )
+≤ (cid:104)
+(cid:12)(cid:12)(cid:12)
+(cid:16)
+(cid:17)(cid:105)
+i=1 (1 + γiCδ C2 ) − 1
+Πd
+CL (cid:107)fw (x)(cid:107)F .
+√
+√
+σi
+hi
+hi−1
+µ2 (cid:107)DiWi (cid:107)F
+Here γi =
+. Substituting the above bound on expected sharpness in the PAC-Bayes result
+(equation (2.4)), gives the result.
+5 Conclusion
+Learning with deep neural networks displays good generalization behavior in practice, a phenomenon
+that remains largely unexplained. In this paper we discussed different candidate complexity measures
+that might explain generalization in neural networks. We outline a concrete methodology for
+investigating such measures, and report on experiments studying how well the measures explain
+different phenomena. While there is no clear choice yet, some combination of expected sharpness
+and norms do seem to capture much of the generalization behavior of neural networks. A major issue
+still left unresolved is how the choice of optimization algorithm biases such complexity to be low,
+and what is the precise relationship between optimization and implicit regularization.
+References
+[1] M. Anthony and P. L. Bartlett. Neural network learning: Theoretical foundations. cambridge
+university press, 2009.
+[2] P. L. Bartlett. The sample complexity of pattern classiﬁcation with neural networks: the size of
+the weights is more important than the size of the network. IEEE transactions on Information
+Theory, 44(2):525–536, 1998.
+[3] P. L. Bartlett. The impact of the nonlinearity on the VC-dimension of a deep network. Preprint,
+2017.
+[4] P. L. Bartlett and S. Mendelson. Rademacher and gaussian complexities: Risk bounds and
+structural results. Journal of Machine Learning Research, 3(Nov):463–482, 2002.
+[5] P. L. Bartlett, V. Maiorov, and R. Meir. Almost linear vc dimension bounds for piecewise
+polynomial networks. Neural computation, 10(8):2159–2173, 1998.
+[6] P. Chaudhari, A. Choromanska, S. Soatto, and Y. LeCun. Entropy-sgd: Biasing gradient descent
+into wide valleys. arXiv preprint arXiv:1611.01838, 2016.
+[7] G. K. Dziugaite and D. M. Roy. Computing nonvacuous generalization bounds for deep
+(stochastic) neural networks with many more parameters than training data. arXiv preprint
+arXiv:1703.11008, 2017.
+[8] T. Evgeniou, M. Pontil, and T. Poggio. Regularization networks and support vector machines.
+Advances in computational mathematics, 13(1):1–50, 2000.
+[9] M. Hardt, B. Recht, and Y. Singer. Train faster, generalize better: Stability of stochastic gradient
+descent. In ICML, 2016.
+[10] N. Harvey, C. Liaw, and A. Mehrabian. Nearly-tight vc-dimension bounds for piecewise linear
+neural networks. arXiv preprint arXiv:1703.02930, 2017.
+[11] N. S. Keskar, D. Mudigere, J. Nocedal, M. Smelyanskiy, and P. T. P. Tang. On large-batch train-
+ing for deep learning: Generalization gap and sharp minima. arXiv preprint arXiv:1609.04836,
+2016.
+[12] J. Langford and R. Caruana.
+(not) bounding the true error.
+In Proceedings of the 14th
+International Conference on Neural Information Processing Systems: Natural and Synthetic,
+pages 809–816. MIT Press, 2001.
+12
+[13] U. v. Luxburg and O. Bousquet. Distance-based classiﬁcation with lipschitz functions. Journal
+of Machine Learning Research, 5(Jun):669–695, 2004.
+[14] D. McAllester. Simpliﬁed pac-bayesian margin bounds. Lecture notes in computer science,
+pages 203–215, 2003.
+[15] D. A. McAllester. Some PAC-Bayesian theorems. In Proceedings of the eleventh annual
+conference on Computational learning theory, pages 230–234. ACM, 1998.
+[16] D. A. McAllester. PAC-Bayesian model averaging.
+In Proceedings of the twelfth annual
+conference on Computational learning theory, pages 164–170. ACM, 1999.
+[17] B. Neyshabur, R. Salakhutdinov, and N. Srebro. Path-SGD: Path-normalized optimization in
+deep neural networks. In Advanced in Neural Information Processsing Systems (NIPS), 2015.
+[18] B. Neyshabur, R. Tomioka, and N. Srebro. Norm-based capacity control in neural networks. In
+Proceeding of the 28th Conference on Learning Theory (COLT), 2015.
+[19] B. Neyshabur, R. Tomioka, and N. Srebro. In search of the real inductive bias: On the role
+of implicit regularization in deep learning. Proceeding of the International Conference on
+Learning Representations workshop track, 2015.
+[20] B. Neyshabur, R. Tomioka, R. Salakhutdinov, and N. Srebro. Data-dependent path normalization
+in neural networks. In the International Conference on Learning Representations, 2016.
+[21] B. Neyshabur, Y. Wu, R. Salakhutdinov, and N. Srebro. Path-normalized optimization of
+recurrent neural networks with relu activations. Advances in Neural Information Processing
+Systems, 2016.
+[22] S. Shalev-Shwartz and S. Ben-David. Understanding machine learning: From theory to
+algorithms. Cambridge university press, 2014.
+[23] K. Simonyan and A. Zisserman. Very deep convolutional networks for large-scale image
+recognition. arXiv preprint arXiv:1409.1556, 2014.
+[24] A. J. Smola, B. Schölkopf, and K.-R. Müller. The connection between regularization operators
+and support vector kernels. Neural networks, 11(4):637–649, 1998.
+[25] J. Sokolic, R. Giryes, G. Sapiro, and M. R. Rodrigues. Generalization error of invariant
+classiﬁers. arXiv preprint arXiv:1610.04574, 2016.
+[26] N. Srebro and A. Shraibman. Rank, trace-norm and max-norm. In International Conference on
+Computational Learning Theory, pages 545–560. Springer Berlin Heidelberg, 2005.
+[27] N. Srebro, J. Rennie, and T. S. Jaakkola. Maximum-margin matrix factorization. In Advances
+in neural information processing systems, pages 1329–1336, 2005.
+[28] H. Xu and S. Mannor. Robustness and generalization. Machine learning, 86(3):391–423, 2012.
+[29] C. Zhang, S. Bengio, M. Hardt, B. Recht, and O. Vinyals. Understanding deep learning requires
+rethinking generalization. In International Conference on Learning Representations, 2017.
+A Experiments Settings
+In experiment with different network sizes, we train a two layer perceptron with ReLU activation and
+we train a modiﬁed version of the VGG architecture [23] with the conﬁguration 2 × [64, 3, 3, 1],
+varying number of hidden units without Batch Normalization or dropout. In the rest of the experiments,
+2 × [128, 3, 3, 1], 2 × [256, 3, 3, 1], 2 × [512, 3, 3, 1] where we add Batch Normalization before
+ReLU activations and apply 2 × 2 max-pooling with window size 2 and dropout after each stack.
+Convolutional layers are followed by 4 × 4 average pooling, a fully connected layer with 512 hidden
+units and ﬁnally a linear layer is added for prediction.
+In all experiments we train the networks using stochastic gradient descent (SGD) with mini-batch
+size 64, ﬁxed learning rate 0.01 and momentum 0.9 without weight decay. In all experiments where
+13
+achieving zero training error is possible, we continue training until the cross-entropy loss is less than
+10−4 .
+When calculating norms on a network with a Batch Normalization layer, we reparametrize the
+network to one that represents the exact same function without Batch Normalization as suggested
+in [20]. In all our ﬁgures we plot norm divided by margin to avoid scaling issues (see Section 2),
+where we set the margin over training set S to be 5th -percentile of the margins of the data points in S ,
+i.e. Prc5 {fw (xi )[yi ] − maxy (cid:54)=yi fw (x)[y ]|(xi , yi ) ∈ S } . We have also investigated other versions
+of the margin and observed similar behavior to this notion.
+We calculate the sharpness, as suggested in [11] - for each parameter wi we bound the magnitude
+of perturbation by α(|wi | + 1) for α = 5.10−4 . In order to compute the maximum perturbation
+(maximize the loss), we perform 2000 updates of stochastic gradient ascent starting from the minimum,
+with mini-batch size 64, ﬁxed step size 0.01 and momentum 0.9.
+To compute the expected sharpness, we perturb each parameter wi of the model with noise generated
+from Gaussian distribution with zero mean and standard deviation, α(10 |wi | + 1). The expected
+sharpness is average over 1000 random perturbations each of which are averaged over a mini-batch
+of size 64. We compute the expected sharpness for different choices of α. For each value of α the KL
+divergence can be calculated as 1
+.
+(cid:80)
+(cid:17)2
+(cid:16)
+α2
+i
+(10|wi |+1)
+wi
+B Proofs
+B.1 Proof of Lemma 1
+Proof. Deﬁne gw,ν ,s (x) as the network fw with weight Wi in every layer i ∈ s replaced by νi .
+Hence,
+(cid:0)Πd−1
+gw,ν ,{i} (x)(cid:107)F + (cid:107) (cid:88)
+i=1 Di (W + ν )i
+(cid:1) ∗ x − Wd
+≤ (cid:107) (cid:88)
+(cid:1) ∗ x(cid:107)F
+(cid:0)Πd−1
+gw,ν ,{i,j} (x)(cid:107)F + · · · + (cid:107)fν (x)(cid:107)F
+i=1 DiWi
+(cid:107)(W + ν )d
+(10)
+Base case: First we show the bound for terms with one noisy layer. Let gw,ν ,{k} (x) denote fw (x)
+with weights in layer k , Wk replaced by νk . Now notice that,
+i
+i,j
+i=k+1DiWi ∗ Dk νk ∗ (cid:0)Πk−1
+i=k+1DiWi (cid:107)F (cid:107)(cid:107) (cid:0)Πk−1
+i=1 DiWi
+(i)≤ σk (cid:107)WdΠd−1
+i=1 DiWi
+(ii)≤ σk
+i=1 DiWi
+E(cid:107)gw,ν ,{k} (x)(cid:107)F = E(cid:107)WdΠd−1
+(cid:112)hk hk−1
+(cid:0)Πd−1
+(cid:112)hk hk−1
+µ2 (cid:107)DkWk (cid:107)F
+(cid:107)fw (x)(cid:107)F .
+µ2(cid:107)DkWk (cid:107)F
+(cid:1) ∗ x(cid:107)F
+(cid:1) ∗ x(cid:107)F
+(cid:1) ∗ x(cid:107)F
+(cid:107)Wd
+= σk
+(i) follows from Lemma 3. (ii) follows from condition C 1.
+Induction step: Let for any set s ⊂ [d], |s| = k , the following holds:
+(cid:112)hihi−1
+µ2 (cid:107)DiWi (cid:107)F
+We will prove this now for terms with k + 1 noisy layers.
+E(cid:107)gw,ν ,s∪{j} , x)(cid:107)F ≤ σj
+.
+E(cid:107)gw,ν ,s (x)(cid:107)F ≤ (cid:107)fw (x)(cid:107)F Πi∈sσi
+(cid:112)hj hj−1
+(cid:112)hj hj−1
+(cid:112)hihi−1
+µ2(cid:107)DjWj (cid:107) E(cid:107)gw,ν ,s (x)(cid:107)F
+µ2(cid:107)DjWj (cid:107) (cid:107)fw (x)(cid:107)F Πi∈sσi
+(cid:112)hihi−1
+µ2(cid:107)DiWi (cid:107)F
+= (cid:107)fw (x)(cid:107)F Πi∈s∪{j}σi
+µ2 (cid:107)DiWi (cid:107)F
+≤ σj
+14
+Substituting the above expression in equation (10) gives,
+(cid:0)Πd−1
+i=1 Di (W + ν )i
+(cid:1) ∗ x − Wd
+(cid:107)(W + ν )d
+(cid:0)Πd−1
+Πd
+(cid:32)
+≤
+i=1 DiWi
+(cid:1) ∗ x(cid:107)F
+(cid:32)
+i=1
+1 +
+(cid:112)hihi−1
+µ2(cid:107)DiWi(cid:107)F
+σi
+(cid:33)
+(cid:33)
+− 1
+(cid:107)fw (x)(cid:107)F .
+B.2 Proof of Lemma 2
+Proof. We prove this lemma by induction on k . Recall that (cid:98)Di is the diagonal matrix with 0’s and 1’s
+corresponding to the activation pattern of the perturbed network fw+ν (x). Let Cδ = 2(cid:112)ln(dh/δ)
+and 1E denote the indicator function, that is 1 if the event E is true, 0 else. We also use f k
+denote the network truncated to level k , in particular f k
+w (x) to
+w (x) = Πk
+i=1DkWk x.
+Base case:
+(cid:107) (cid:98)D1 − D1 (cid:107)1 =
+(cid:88)
+i
+1(cid:104)(W +ν )1,i ,x(cid:105)∗(cid:104)W1,i ,x(cid:105)<0 =
+(cid:88)
+i
+1(cid:104)(w)1,i ,x(cid:105)2<−(cid:104)(ν )1,i ,x(cid:105)∗(cid:104)(w)1,i ,x(cid:105)
+≤ (cid:88)
+i
+1|(cid:104)(w)1,i ,x(cid:105)|<|(cid:104)(ν )1,i ,x(cid:105)| .
+(cid:112)ln(dh/δ) =
+Since ν1 is a random Gaussian matrix, and (cid:107)x(cid:107) ≤ 1, for any i, |(cid:104)(ν )1,i , x(cid:105)| ≤ 2σ1
+σ1Cδ with probability greater than 1 − δ
+d . Hence, with probability ≥ 1 − δ
+d ,
+(cid:107) (cid:98)D1 − D1 (cid:107)1 ≤ (cid:88)
+1|(cid:104)(w)1,i ,x(cid:105)|≤σ1Cδ ≤ C2h1σ1Cδ .
+i
+This completes the base case for k = 1. (cid:98)D1 is a random variable that depends on ν1 . Hence, in the
+remainder of the proof, to avoid this dependence, we separately bound (cid:98)D1 − D using the expression
+above and compute expectation only with respect to ν1 . With probability ≥ 1 − δ
+d ,
+E(cid:107)E rr1(cid:107)F = E(cid:107) (cid:98)D1 ∗ (W + ν )1x − D1 ∗ (W + ν )1x(cid:107)F
+≤ E(cid:107)( (cid:98)D1 − D1 ) ∗ W1x(cid:107)F + E(cid:107)( (cid:98)D1 − D1 ) ∗ ν1x(cid:107)F
+C2h1σ1Cδ σ1 +
+C2h1σ1Cδ σ1
+(i)≤ (cid:112)
+(cid:112)
+(cid:112)
+= 2
+C2h1σ1Cδ σ1 .
+(i) follows because, each hidden node in E(cid:107)( (cid:98)D1 − D1 ) ∗ W1x(cid:107)F has norm less than σ1Cδ (as it
+changed its activation), number of such units is less than C2h1σ1Cδ .
+k = 1 case does not capture all the intricacies and dependencies of higher layer networks. Hence we
+also evaluate the bounds for k = 2.
+w (cid:105)≤0 ≤ (cid:88)
+(cid:107) (cid:98)D2 − D2(cid:107)1 ≤ (cid:88)
+1|(cid:104)W2,i ,f 1
+w (cid:105)|≤|(cid:104)ν2,i ,f 1
+w+ν (cid:105)|+|(cid:104)W2,i ,f 1
+w+ν (cid:105)∗(cid:104)W2,i ,f 1
+1(cid:104)(W +ν )2,i ,f 1
+w+ν −f 1
+w (cid:105)|
+i
+i
+Now, with probability ≥ 1 − 2δ
+d we get:
+15
+(cid:112)
+(cid:12)(cid:12)(cid:10)ν2,i , f 1
+≤ Cδ σ2
+≤ Cδ σ2
+(i)≤ Cδ σ2
+= Cδ σ2
+w+ν
+(cid:16)(cid:107)f 1
+(cid:16)(cid:107)f 1
+(cid:11)(cid:12)(cid:12)
+(cid:17)
+(cid:17)
+w+ν − f 1
+w
+(cid:112)
+(cid:112)
+(cid:115)
+(cid:11)(cid:12)(cid:12) + (cid:12)(cid:12)(cid:10)W2,i , f 1
+w (cid:107)F + 2
+C2h1σ1Cδ σ1
+w (cid:107)F + 2
+C2h1σ1Cδ σ1
+ˆσ1(cid:112)hi + hi−1
+ˆσ1
++ 2 ˆσ1
+C3(cid:107)fw (x)(cid:107)1/d
+µ
+w (cid:107)F + β1 ˆσ1
+(cid:1) +
+(cid:33)
+β1 ˆσ1
+(cid:107)f 1
+w (cid:107)F + 2
+F
+(cid:0)(cid:107)f 1
+(cid:32)
+(cid:114)
++ C3
+(cid:112)
++ (cid:107)W2,i(cid:107)2
+C2h1σ1Cδ σ1
+(cid:107)D2W2(cid:107)F√
+2
+C2h1σ1Cδ σ1
+h2
+ˆσ1(cid:112)hi + hi−1
+C3 (cid:107)fw (x)(cid:107)1/d
+µ
+(cid:115)
+F
+i=2
+(i)
+Πd
+ˆσ1√
+hi+hi−1
+µ(cid:107)D1W1 x(cid:107)F
+h1
+µ(cid:107)DiWi (cid:107)F
+hi
+where, βi = 2
+.
+follows
+from condition C 1, which results
+in
+≤ (cid:107)fw (x)(cid:107)F . Hence, if we consider the rebalanced network5 where all
+√
+√
+layers have same values for µ(cid:107)DiWi (cid:107)F
+√
+, we get, µ(cid:107)DiWi (cid:107)F
+√
+F . Also the above equations
+follow from setting, σi =
+.
+Hence, with probability ≥ 1 − 2δ
+d ,
+≤ (cid:107)fw (x)(cid:107)1/d
+hi
+ˆσi
+hi+hi−1
+√
+C2Cδ
+hi
+(cid:107) (cid:98)D2 − D2(cid:107)1 ≤ C2 ∗ h2
+(cid:32)
+(cid:0)(cid:107)f 1
+Cδ σ2
+w (cid:107)F + β1 ˆσ1
+(cid:1) +
+(cid:33)
+C3(cid:107)fw (x)(cid:107)1/d
+µ
+F
+β1 ˆσ1
+.
+Since, we choose σi to scale as some small number O(σ), in the above expression the ﬁrst term
+scales as O(σ) and the last two terms decay at least as O(σ 3/2 ). Hence we do not include them in the
+computation of E rr .
+E(cid:107)E rr2(cid:107)F = E(cid:107) (cid:98)D2 (W + ν )2 ∗ (cid:98)D1 ∗ (W + ν )1x − D2 (W + ν )2 ∗ D1 ∗ (W + ν )1x(cid:107)F
+≤ E(cid:107)( (cid:98)D2 − D2 )(W + ν )2 ∗ ( (cid:98)D1 − D1 ) ∗ (W + ν )1x(cid:107)F + E(cid:107)D2 (W + ν )2 ∗ ( (cid:98)D1 − D1 ) ∗ (W + ν )1x(cid:107)F
++ E(cid:107)( (cid:98)D2 − D2 )(W + ν )2 ∗ D1 ∗ (W + ν )1x(cid:107)F .
+We will bound now the ﬁrst term in the above expression. With probability ≥ 1 − 2δ
+d ,
+≤ 2
+(cid:113)
+(cid:113)
+E(cid:107)( (cid:98)D2 − D2 )(W + ν )2 ∗ ( (cid:98)D1 − D1 ) ∗ (W + ν )1x(cid:107)F
+≤ E(cid:107)( (cid:98)D2 − D2 )W2 ∗ ( (cid:98)D1 − D1 ) ∗ W1x(cid:107)F + E(cid:107)( (cid:98)D2 − D2 )W2 ∗ ( (cid:98)D1 − D1 ) ∗ ν1x(cid:107)F
++ E(cid:107)( (cid:98)D2 − D2 )ν2 ∗ ( (cid:98)D1 − D1 ) ∗ W1x(cid:107)F + E(cid:107)( (cid:98)D2 − D2 )ν2 ∗ ( (cid:98)D1 − D1 ) ∗ ν1x(cid:107)F
+C2 ∗ h2Cδ σ2(cid:107)f 1
+W (cid:107)F Cδ σ2 (cid:107)f 1
+C2 ∗ h1 ∗ Cδ σ1Cδ σ1
+C2 ∗ h2Cδ σ2 (cid:107)f 1
+C2 ∗ h1 ∗ Cδ σ1Cδ σ1 + O(σ2 )
+C 2
+h1
+µ(cid:107)D2W2(cid:107)F
+(cid:107) (cid:98)Dk − Dk (cid:107)1
+C2hiCδ σi .
+O (cid:0)C2hkCδ σk (cid:107)f k−1
+i
+W (cid:107)F
+W (cid:107)F Cδ σ2
+and
+prove
+it
+and E(cid:107)E rrk (cid:107)F
++ 2
+≤ 4(cid:107)f 2
+(cid:112)
+(cid:112)
+statement
+(cid:112)
+(cid:112)
+w (cid:107)F
+assume
+w (cid:107)F
+δ σ2σ1
+(cid:1)
+the
+√
+for
+≤
+≤
+Π2
+all
+h1
+i=1
+k
+Induction step:
+Now we
+k + 1.
+for
+≤
+5The parameters of ReLu networks can be scaled between layers without changing the function
+16
+(cid:18)
+O
+(cid:18)
+√
+√
+σi
+hi
+hi−1C2C3
+µ2 (cid:107)Wi (cid:107)F
+prove the statement for k + 1.
+i=1
+Πk
+1 +
+(cid:107) (cid:98)Dk+1 − Dk+1(cid:107)1 =
+i
+(cid:88)
+≤ (cid:88)
+(cid:88)
+≤ (cid:88)
+=
+i
+i
+(cid:19) (cid:18)
+Πk
+i=1 (1 +
+√
+σi
+√
+hi
+hi−1Cδ C2
+µ2 (cid:107)Wi (cid:107)F
+) − 1
+(cid:19)
+(cid:19)
+.
+(cid:107)f k
+w (cid:107)F
+Now we
+i=1 (cid:98)Di (W +ν )i ∗x(cid:105)∗(cid:104)W2,i ,D1W1 x(cid:105)≤0
+1(cid:104)(W +ν )k+1,i ,Πk
+i=1 (cid:98)Di (W +ν )i ∗x(cid:105)|≤|(cid:104)νk+1,i ,Πk
+i=1 (cid:98)Di (W +ν )i ∗x(cid:105)|
+1|(cid:104)Wk+1,i ,Πk
+1|(cid:104)Wk+1,i ,f k
+w+ν (cid:105)|≤|(cid:104)νk+1,i ,f k
+w+ν (cid:105)|
+1|(cid:104)Wk+1,i ,f k
+W (cid:105)|≤|(cid:104)νk+1,i ,f k
+w (cid:105)|+|(cid:104)νk+1,i ,f k
+w+ν −f k
+w (cid:105)|+|(cid:104)Wk+1,i ,f k
+w+ν −f k
+w (cid:105)|
+Hence, with probability ≥ 1 − kδ
+d ,
+i
+(cid:107) (cid:98)Dk+1 − Dk+1(cid:107)1 ≤ C2hk+1
+w+ν − f k
+w+ν − f k
+w (cid:107)F
+≤ C2hk+1Cδ σk+1(cid:107)f k
+w (cid:107)F + C2hk+1Cδ σk+1(cid:107)f k
+w+ν − f k
+w (cid:107)F + C2hk+1(cid:107)Wk+1,i(cid:107)(cid:107)f k
+w+ν − f k
+(cid:2)Cδ σk+1 ((cid:107)f k
+w (cid:107)F + (cid:107)f k
+w (cid:107)F ) + (cid:107)Wk+1,i(cid:107)(cid:107)f k
+(cid:3)
+w (cid:107)F .
+(cid:18)
+(cid:18)
+(cid:19)
+(cid:19)
+√
+w (cid:107)F ≤
+w+ν − f k
+Now we will show that the last two terms in the above expression scale as O(σ2 ). For that, ﬁrst
+notice that (cid:107)f k
+(cid:107)fw (x)(cid:107)F + E rrk , from lemma 1.
+Note that the second term in the above expression clearly scale as O(σ2 ).
+Hence,
+σi
+hi hi−1
+i=1
+µ2 (cid:107)DiWi (cid:107)F
+(cid:107) (cid:98)Dk+1 − Dk+1(cid:107)1 ≤ O (cid:0)C2hk+1Cδ σk+1(cid:107)f k
+w (cid:107)F
+(cid:1) .
+− 1
+1 +
+Πk
+w+ν − ˜f k+1
+w+ν (cid:107)F
+(cid:107)E rrk+1(cid:107) = (cid:107)f k+1
+= (cid:107) (cid:98)Dk+1 (W + ν )k+1Πk+1
+i=1 (cid:98)Di (W + ν )ix − Dk+1 (W + ν )k+1Πk+1
+≤ (cid:107)( (cid:98)Dk+1 − Dk+1 )(W + ν )k+1Πk+1
+i=1 Di (W + ν )ix(cid:107)F + (cid:107) (cid:98)Dk+1 (W + ν )k+1E rrk (cid:107)F
+i=1 Di (W + ν )ix(cid:107)F
+≤ (cid:107)( (cid:98)Dk+1 − Dk+1 )(W + ν )k+1Πk+1
+i=1 Di (W + ν )ix(cid:107)F + (cid:107)( (cid:98)Dk+1 − Dk+1 )(W + ν )k+1E rrk (cid:107)F
++ (cid:107)Dk+1 (W + ν )k+1E rrk (cid:107)F
+E(cid:107)E rrk+1(cid:107) ≤ (cid:113)
++ E(cid:107)E rrk (cid:107)F
+C2hk+1Cδ σk+1 (cid:107)f k
+w (cid:107)F Cδ σk+1 (cid:107)f k
+W (cid:107)F E(cid:107)Πk+1
+C2hk+1Cδ σk+1(cid:107)f k
+w (cid:107)F Cδ σk+1(cid:107)f k
+w (cid:107)F + (cid:107)Dk+1Wk+1 (cid:107)F + σk+1
+Substituting the bounds for (cid:98)Dk+1 − Dk+1 and E rrk gives us, with probability ≥ 1 − kδ
+d .
+i=1 Di (W + ν )ix(cid:107)F
+(cid:112)hk+1
+(cid:18)(cid:113)
+(cid:19)
+Now we bound the above terms following the same approach as in proof of Lemma 1, by considering
+all possible replacements of Wi with νi . That gives us the result.
+C Supporting results
+Lemma 3. Let A ,B be n1 × n2 and n3 × n4 matrices and ν be a n2 × n3 entrywise random
+Gaussian matrix with νij ∼ N (0, σ). Then,
+E [(cid:107)A ∗ ν ∗ B (cid:107)F ] ≤ σ(cid:107)A(cid:107)F (cid:107)B (cid:107)F .
+17
+a ≤ c ≤ b − 1
+a < c < b − 1
+c = a or c = b − 1
+Figure 6: Condition C 1: condition number 1
+µ of the network and its decomposition to two cases for random
+initialization and learned weights. Top: random initialization Bottom: learned weights. Left: distribution of all
+combinations of a ≤ c ≤ b − 1. Middle: when a < c < b − 1. Right: when c = a or c = b − 1.
+Proof. By Jensen’s inequality,
+E [(cid:107)A ∗ ν ∗ B (cid:107)F ]2 ≤ E (cid:2)(cid:107)A ∗ ν ∗ B (cid:107)2
+= E
+(cid:88)
+F
+(cid:3)
+
+(cid:88)
+(cid:88)
+(cid:88)
+ij
+ik
+=
+A2
+= σ2(cid:107)A(cid:107)2
+F (cid:107)B (cid:107)2
+F .
+kl
+ij
+2
+Aik νklBlj
+kl
+E (cid:2)ν 2
+kl
+(cid:3) B 2
+lj
+D Conditions in Theorem 1
+In this section, we compare the conditions in Theorem 1 of a learned network with that of its random
+initialization. We trained a 10-layer feedforward network with 1000 hidden units in each layer on
+MNIST dataset. Figures 6, 7 and 8 compare condition C 1, C 2 and C 3 on learned weights to that of
+random initialization respectively. Interestingly, we observe that the network with learned weights is
+very similar to its random initialization in terms of these conditions.
+18
+Figure 7: Ratio of activations that ﬂip based on the magnitude of perturbation. Left: random initialization.
+Middle: learned weights. Right: learned weights (zoomed in).
+Figure 8: From left to right: Condition C 3 for random initialization and learned network, output values for
+random and learned network
+19

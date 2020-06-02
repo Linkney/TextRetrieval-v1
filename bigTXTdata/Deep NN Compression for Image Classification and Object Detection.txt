@@ -1,0 +1,878 @@
+Deep Neural Network Compression
+for Image Classiﬁcation and Object Detection
+Georgios Tzelepis∗,1 , Ahraz Asif∗,1 , Saimir Baci1 , Selcuk Cavdar1 , and Eren Erdal Aksoy1,2
+9
+1
+0
+2
+t
+c
+O
+7
+]
+V
+C
+.
+s
+c
+[
+1
+v
+7
+4
+7
+2
+0
+.
+0
+1
+9
+1
+:
+v
+i
+X
+r
+a
+Abstract—Neural networks have been notorious for being
+computational expensive. This is mainly because neural networks
+are often over-parametrized and most likely have redundant
+nodes or layers as they are getting deeper and wider. Their
+demand for hardware resources prohibits their extensive use in
+embedded devices and puts restrictions on tasks like real time
+image classiﬁcation or object detection. In this work, we propose a
+network agnostic model compression method infused with a novel
+dynamical clustering approach to reduce the computational cost
+and memory footprint of deep neural networks. We evaluated our
+new compression method on ﬁve different state-of-the-art image
+classiﬁcation and object detection networks. In classiﬁcation
+networks, we pruned about 95% of network parameters. In
+advanced detection networks such as YOLOv3, our proposed
+compression method managed to reduce the model parameters
+up to 59.70% which yielded 110× less memory without sacriﬁcing
+much in accuracy.
+I . IN TRODUC T ION
+Deep learning has shown remarkable performance in various
+application areas [1]–[3]. An intriguing application of deep
+learning is within the ﬁeld of autonomous driving, where
+neural networks are used in scene segmentation [4], object
+detection [5] and route planning [6]. Although neural networks
+are considered mature and reliable, they have the distinct dis-
+advantage of being computationally expensive to train and use.
+In computationally resource constrained environments such
+as embedded systems for autonomous vehicles, it becomes
+paramount
+to optimize the networks with respect
+to both
+memory and inference time. Thus, in domains where achieving
+high levels of accuracy is vital (e.g. due to safety reasons) and
+where resources are limited, methodologies to make neural
+networks more compact and efﬁcient are essential.
+In order to leverage the use of state-of-the-art network
+architectures and computationally expensive techniques such
+as residual blocks or convolutional layers within resource con-
+strained embedded systems, it is important that investigations
+are conducted into how network architectures can be made
+more efﬁcient through the reduction of parameters that have
+negative or no impact towards useful predictions. Furthermore,
+increasing computational efﬁciency results in a more energy-
+efﬁcient neural network (as fewer computations have to be
+done to achieve state-of-the-art results) and a more memory-
+efﬁcient neural network by reducing requirements on storage.
+The research leading to these results has received funding from the
+Knowledge Foundation and the Vinnova FFI project SHARPEN, under grant
+agreement no. 2018-05001.
+1Volvo Technology AB, VGTT, Gothenburg, Sweden
+2Halmstad University, School of Inf. Technology, Halmstad, Sweden
+∗ The ﬁrst two authors contributed equally to this work
+Therefore, reduction in inference time can enable usage of, for
+instance, advanced image classiﬁcation and object detection
+network architectures in “real-time”. In addition, reduction
+in memory footprint can enable the deployment of network
+architectures to resource-constrained embedded environments
+where disk space or RAM is limited.
+In this work, we introduce a generic model compression
+method that
+is network agnostic (i.e. not dependent on a
+speciﬁc neural network architecture) and has minimal impacts
+on accuracy, while reducing the inference time and mem-
+ory footprint of a network. Our proposed method has two
+stages: pruning and quantization. In the pruning phase, low-
+importance parameters are ﬁrst removed and then the network
+is retrained for a small number of epochs. This ﬁrst stage is
+repeated until reaching a threshold accuracy drop. The follow-
+ing quantization stage rather projects network parameters into
+forms that enable more computationally efﬁcient arithmetic by,
+for instance, migrating from ﬂoat to integer representation.
+These two consecutive compression operations reduce the
+number of required computations while also lowering the
+memory footprint of deep networks.
+We experimentally evaluated our model compression
+method on different image classiﬁcation (using MNIST [7]
+and Cifar-10 [8] datasets as well as ResNet50 [9] model)
+and object detection tasks (using YOLOv3 [10] and Faster-
+RCNN [11] networks). In classiﬁcation networks, we reached
+up to 95% pruning of network parameters. In relatively more
+complicated detection networks, we managed to reduce the
+number of model parameters up to 59.70% without sacriﬁcing
+much in accuracy. With our proposed method, we achieved
+up to 182× and 110× memory compressions (i.e. reduction
+rates in memory required for network parameters) for the
+classiﬁcation and detection networks, respectively.
+Our main contributions in this work are as follows:
+• We applied model pruning to object detection neural
+network architectures. To the best of our knowledge,
+pruning methodologies have not been applied to object
+detection networks. We showed that our proposed pruning
+method is capable of removing low-importance param-
+eters for object detection while maintaining reasonable
+performance.
+• We extended the model compression methodology de-
+scribed by Han et. al. in [12] with a dynamic method
+which yields better clustering of network weights during
+the process of k-means quantization. We experimentally
+showed that using a dynamic method of clustering which
+determines the number of clusters required per layer in a
+deterministic fashion is capable of reducing the accuracy
+drop that is caused by k-means quantization.
+I I . R E LATED WORK
+Model compression refers to the techniques that reduce the
+inference time and the memory footprint of a deep network.
+Such compression methods generally leverage the use of
+network pruning and quantization.
+A. Pruning
+Network pruning involves reducing the number of parame-
+ters of a network (e.g. weights) through their removal based
+on a criterion or threshold. There exist several proven methods
+of ranking network parameters based on a variety of different
+criterion, from generating thresholds based on the distribution
+of the weights [12] to more sophisticated parameter ranking
+techniques such as using Taylor Expansion to approximate the
+importance of a parameter [13].
+Molchanov et. al. [13] compared magnitude-based pruning
+criterion in [12] against a novel criterion derived by using a
+ﬁrst order Taylor polynomial to approximate the change that
+removing a parameter will have on the network cost function.
+The greater the impact, the more important a parameter is
+predicted to be. In their results, the Taylor Expansion criterion
+outperformed the magnitude based pruning on AlexNet trained
+on the ImageNet dataset.
+Zhuang et. al. [14] pruned convolutional layers by using
+the scaling factor learned by Batch Normalization layers for
+channels to estimate their importance, of which a speciﬁed
+percentage of those channels are pruned. A greedy pruning
+algorithm was deﬁned in [15] to remove a channel based on
+its impact on the activation values of the next layer (i.e. the one
+with the smallest impact is pruned). This method performed
+better than using Taylor Expansion (in terms of accuracy) to
+determine the importance of a network parameter on the VGG-
+16 network architecture.
+In [16], See et. al. investigated the use of three different
+model pruning techniques, with the goal of reducing the
+number of weights of neural machine translation architectures:
+class-distribution, class-uniform and class-blind. They deﬁne
+the concept of a “weight class”, subsets of all of the weights of
+the model. Essentially, these weight classes can be considered
+as the weights per layer, i.e. the input weights of a given layer
+would all be the same weight class.
+Class-distribution pruning, as employed in [12], deﬁnes a
+threshold value based on the standard deviation of the given
+weight class, controlled by a scaling hyperparameter. All
+weights with a magnitude lower than the threshold value are
+removed from the network, reducing memory and inference
+time. Furthermore, the class-uniform method of pruning re-
+moves the same percentage of weights from each of the weight
+classes, such that the total number of parameters pruned is
+equal to the number of parameters pruned per weight class.
+Finally, class-blind pruning does not consider weight class at
+all; instead, all of the weights across the network are ordered
+by magnitude and the bottom percentage, as controlled by
+a hyperparameter, are pruned (e.g. the bottom 20% of the
+weights for a network).
+See et. al. [16] found the class-blind method to be the
+most effective in regards to the percentage pruned versus the
+accuracy of the pruned model. Class-blind pruning drops off
+the least in regards to accuracy, with class-distribution and
+class-uniform pruning both dropping at a sharper rate after
+around 30% of parameters pruned. The intuition here being
+that as the class-blind method compares the weights globally,
+it is more biased towards removing low magnitude weights
+than class-distribution or class-unﬁrom weights, which will
+prune a signiﬁcant proportion of all weight classes regardless
+of their overall magnitude.
+A common practise after pruning is to ﬁne-tune the remain-
+ing weights by retraining the network to improve accuracy.
+Pruning has often acted as a form of regularization by actu-
+ally increasing the accuracy of the model as shown in [16]
+where consecutive retraining and pruning of the network are
+performed until the accuracy begins to decrease. This strategy
+enables the network to retain as few weights as possible.
+B. Quantization
+Quantization refers to the act of reducing the memory
+required to represent a network parameter [17]. Existing
+quantization techniques in the literature fall into two large
+categories: deterministic and stochastic quantizations. Deter-
+ministic quantization involves mapping a network parameter to
+a value such that the parameters occupy less space. Stochastic
+quantization models network parameters as discrete distribu-
+tions and samples from them.
+Rounding is an example of a deterministic quantization
+technique. A parameter is mapped directly to a quantized pa-
+rameter that occupies less space, typically at a lower precision.
+For example, rounding a weight down from ﬂoat64 to ﬂoat32
+can be seen as a form of deterministic quantization. There is
+a loss in accuracy of the model depending on how severe the
+rounding operation is. Furthermore, rounding can also destroy
+the training by reducing the precision of the gradients (i.e.
+ﬂattening them). Therefore, many deterministic quantization
+algorithms keep track of the original weight value during
+training, and subsequently re-quantizing.
+The work in [18] introduced a rounding-based quantization
+by quantizing weights into binarized weights of values:+1
+(for positive weights) or -1 (for negative weights). Even
+with such an extreme rounding strategy they were able to
+outperform bespoke baseline classiﬁers on CIFAR-10, MNIST
+and several other datasets. Polino et. al. [19] proposed an
+alternative rounding quantization technique that employs a
+scaling function to map a range of arbitrary values. This
+method reduced network memory footprint by up to an order
+of magnitude before seeing a signiﬁcant drop in accuracy.
+Vector quantization is another deterministic method. It
+involves clustering weights using traditional clustering tech-
+niques (e.g. k-means) and using the centroids as the weight
+values. By mapping all the weights to a respective centroid,
+the total amount of weight values to be stored is reduced, as
+a low-bit index to the centroid can be used instead. In [12],
+the authors used k-means clustering on a per-layer basis to
+generate centroids for the weights. During training, gradients
+were aggregated per centroid and simply summed and added to
+the centroid. This enabled the centroid to beneﬁt from training
+without destroying the accuracy for the entire model.
+In stochastic quantization, network parameters such as
+weights or gradients are rather modeled as discrete distri-
+butions, and instead sampled from a distribution. One such
+example of this is when the parameters of these distributions
+are typically inferred through the use of learning algorithms
+such as the Expectation Back-propagation algorithm [20].
+Furthermore, the use of stochastic quantization also adds a
+regularization effect to the model. Finally, only the distribution
+and its parameters have to be stored thus reducing the memory
+occupied by representing the parameters.
+This is referred to as probabilistic quantization and can be
+highly efﬁcient as shown in [20] where the authors leveraged
+mean-ﬁeld approximation and the Central Limit Theorem to
+approximate the posterior distribution of the network weights
+(an intractable problem). Their results showed that the Ex-
+pectation Back-propagation algorithm outperformed standard
+back-propagation.However, such techniques are not applicable
+to all network architectures, such as recurrent neural networks.
+I I I . M ETHOD
+Fig. 1 depicts the pipeline of our proposed method which
+starts with iterative class-blind pruning (shown in red dashed
+box) and then continues with the k-means quantization of
+network parameters (green dashed box).
+A. Pruning
+In this stage, we initially assign a percentage of parameters
+to be pruned. This value was then employed to derive a prune
+threshold which speciﬁes the boundary value for parameters to
+Fig. 1. Our proposed two-stage network compression method.
+MAP O F YOLOV3 ON COCO2014 W I TH AND W I THOU T OUR PRO PO SED
+DYNAM IC K -M EAN S QUAN T I ZAT ION
+TABLE I
+Initial
+0.5890
+Quantized with Quantized with our
+k=32 clusters
+dynamic k-means clustering
+0.4400
+0.5010
+be pruned. Practically, any network weight with a magnitude
+below this threshold was pruned. Next, the model was pruned
+using the threshold value, re-trained using a small number of
+epochs (between three and ﬁve) and set of weights producing
+the highest accuracy between the epochs were maintained.
+Finally, the network was validated using a test data set. If the
+accuracy was seen to have dropped beyond that of the speciﬁed
+accuracy threshold, the pruning was ceased and the model
+was saved. However, if the accuracy threshold had not been
+reached, the prune percentage was incremented by a small
+amount to continue removing more network weights.
+B. Quantization
+After pruning, network parameters were quantized by using
+k-means quantization. Unlike the original k-means quantiza-
+tion method proposed in [12], we dynamically compute the
+number of clusters supplied to the k-means algorithm while
+sorting the weights of a given layer. When the number of
+clusters were too low, especially for networks with a large
+number of weights such as YOLOv3, there was a signiﬁcant
+decrease in the accuracy of the network. However when the
+number of clusters were too high, the quantization algorithm
+was almost unusable due to the huge amount of memory
+needed. Therefore, we introduce a new deterministic equation
+to dynamically scale the number of clusters based on the
+number of parameters within a given layer, as formulated in
+Eq. (1).
+Let C and N denote the number of clusters and parameters
+per set of clusters respectively. Then for each layer l with P
+number of parameters, the number of clusters c is given by
+(cid:25)
+(cid:24) Pl
+Nl
+cl =
+∗ Cl
+.
+(1)
+Unlike the static quantization method, such as the one
+introduced in [12] where 32 clusters where generated for every
+layer, our proposed dynamic clustering depends only on the
+number of parameters in each layer. This way, the quantized
+layer will be closer to the original distribution of the weights,
+which is particular beneﬁcial since the parameter number in
+the later layers of a deep network is large.
+The impacts of the use of this dynamic method of clus-
+tering can directly be seen in Table I. By using a greater
+number of clusters (e.g. 32 clusters) for larger layers, the
+decrease in mean Average Precision (mAP) on YOLOv3 on
+the COCO2014 dataset was minimized, i.e. the mAP dropped
+to 0.5010 instead of 0.4400 from 0.5890.
+Unlike the quantization method in [12], we also map the
+cluster centroid back over the clustered weights instead of
+A. MNIST Classiﬁer
+The ﬁrst architecture used for evaluation was a classiﬁer for
+the MNIST dataset [7]. It consisted of a convolutional layer
+with one input channel, 20 output channels and a 5x5 kernel.
+The next layer was another convolutional layer with 20 input
+channels, 50 output channels and a 5x5 kernel. Subsequently
+there were two fully connected layers with 800 input channels
+and 500 output channels, and ﬁnally with 500 input channels
+and 10 output channels. All of the layers used ReLU activation
+function and max pooling was applied after each layer. After
+the ﬁnal layer a softmax function was applied to obtain the
+class probabilities.
+B. Cifar Classiﬁer
+Unlike the previous shallow MNIST classiﬁer, we con-
+structed a deeper classiﬁer for the Cifar-10 [8] images dataset.
+This deep network consisted of two parts: feature extractor and
+classiﬁer. The feature extractor stage had three consecutive
+convolutional blocks which included batch normalization and
+dropout before downsampling with max pooling. The classiﬁer
+part was a fully-convolutional block with basic residual net-
+work units. It is worth nothing that dropout should be in place
+after batch normalization, otherwise, as noted in [21], it can
+cause a shift in the weight distribution and thus minimizing
+the effect of batch normalization during training.
+C. ResNet50
+Residual Networks [9] were implemented for the Stanford
+Dogbreeds dataset, which is a subset of Imagenet [22] data
+focusing on dogs, to classify 120 classes of dogs. Residual
+Networks were made consisting of blocks that use skip con-
+nections to transfer the input information after to the last layer
+of the block. Also batch normalization was applied after each
+convolution in order to help converging to the optimal solution
+by solving the internal covariate shift. More speciﬁcally the
+network to be used was ResNet50.
+D. YOLOv3
+We further employed a state-of-the-art object detection
+network architecture YOLOv3 [10] which has been shown
+to have astonishing performance in object detection problems
+regarding the inference time. It is a one-stage detector where
+the fully convolutional network predicts the bounding boxes
+and class probability of those boxes in one pass.
+The network is made up of 75 convolutional layers with no
+fully connected layers. In addition the architecture is inspired
+by Residual Networks (ResNet) and from Encoder-Decoder
+models such as Feature Pyramid Networks (FPN) [23]. The
+encoder, which is responsible for down-sampling and feature
+extraction, has a stride of two to be used instead of max-
+pooling layers. Subsequently an FPN is used to maintain the
+details that are lost during the encoding part of the network by
+applying element-wise summation to the corresponding layers
+of the decoder, while ResNet adds skip connections within the
+residual blocks that allow the network to be inﬂuenced from
+previous layers in order to generate better features.
+Fig. 2. K-means Weight Quantization on MNIST Classiﬁer
+utilizing a code-book. Code-books are mainly employed to
+map the weights of clusters to a low-bit
+identiﬁer to be
+later used for a lookup to the quantized weight value. The
+main advantage coming with our naive mapping approach
+is the speed increment in the process of searching for the
+corresponding weights in the code-book.
+The effects of k-means quantization after pruning on an
+early layer of the MNIST Classiﬁer architecture is visualized
+in Fig. 2. The data points represent individual weight values
+grouped by cluster and each data point was colored with its re-
+spective cluster. As expected, there was large cluster of values
+with a magnitude of zero, due to the sparsiﬁcation caused by
+pruning. The clusters were spaced equidistantly between the
+minimum and maximum magnitude of the available weights.
+This enabled weights with extreme magnitudes to not be pulled
+into the nearest cluster, which could potentially cause a large
+change in the value. The centroid for each weight cluster was
+mapped back over the weight to simulate the effects of k-
+means quantization.
+IV. EX PER IM EN T S
+For an experimental evaluation, we applied our proposed
+compression method to several state-of-the-art neural network
+architectures within the domains of image classiﬁcation and
+object detection problems, with the aim to optimize the in-
+ference time and memory footprint of networks with different
+depth and width. For the classiﬁcation task, we used MNIST
+[7] and Cifar-10 [8] datasets and ResNet50 [9] model, whereas
+more complex networks such as YOLOv3 [10] and Faster-
+RCNN [11] were employed for the object detection task.
+Large-scale, public and open datasets were chosen for eval-
+uation using open-source implementations of popular neural
+network architectures. For all the assessed architectures, pre-
+published pre-trained weights were used as a baseline. All
+implementations of our proposed compression method were
+done in PyTorch and CUDA and are publicly available 1 .
+1 https://github.com/AhrazA/modelcompression-2019
+E. Faster-RCNN
+Another state-of-the-art object detection algorithm is a two-
+stage detector Faster-RCNN [11]. The network takes the last
+feature map of a convolutional layer and by using an operation
+called Regional Proposal Networks (RPNs), it separates what
+is likely background and what likely an object. The areas
+that are candidates containing an object are called Regions
+of Interest (RoI) and are the ones that are used to detect the
+objects through further processing by the detection network.
+Faster-RCNN is composed of three different neural net-
+works; (1) The Feature Network which is responsible for
+constructing the features and is usually a ResNet, (2) The
+RPN that is usually a plain three layered convolutional network
+which detects the regions on the last feature map with a high
+probability of containing an object and generates a number
+of bounding boxes for them called RoI and (3) the Detection
+Network, that is usually made up of four Fully Connected
+layers which take those RoIs produced by the RPN and
+generate the ﬁnal class and bounding box.
+V. R E SU LT S
+Table II shows the performances of ﬁve different model
+architectures, three image classiﬁers and two object detectors
+described in section IV, at different stages of our model
+compression pipeline depicted in Fig. 1. The column named
+Initial presents the accuracy or mAP of the architecture using
+pre-trained weights before our model compression pipeline
+is applied. The Pruned column indicates the accuracy or
+mAP after the pruning step of our pipeline. The Pruned &
+Quantized column presents the ﬁnal accuracy or mAP after
+the entire model compression procedure has been applied. The
+very last column, called Percentage Pruned, indicates the total
+percentage of the network parameters that were removed.
+Furthermore, presented in Table III are the predicted mem-
+ory requirements for each tested network at different stages.
+All network parameters are assumed to be ﬂoat32 tensors
+occupying four bytes. For the results presented at the Pruned
+step, all the weights that have been removed from the model
+are excluded. For the Pruned & Quantized step, the compres-
+sion ratio for the parameters remaining is calculated using Eq.
+(2) that was initially introduced in [12]. Per layer, given k
+clusters, log2 (k) bits are required to encode the indices for
+the references to the cluster centroids. Given n weights, with
+each connection being represented by b bits and given that only
+k full precision weight values will be stored, the compression
+rate r is given by:
+TABLE II
+MOD EL COM PRE S S ION R E SU LT S
+Architecture (metric)
+Initial
+Pruned
+MNIST Classiﬁer (accuracy)
+CIFAR10 Classiﬁer (accuracy)
+ResNet50 Classiﬁer (accuracy)
+YOLOv3 Detector (mAP)
+FasterRCNN Detector (mAP)
+0.990
+0.917
+0.834
+0.589
+0.677
+0.993
+0.899
+0.825
+0.537
+0.662
+Pruned &
+Quantized
+0.993
+0.898
+0.747
+0.530
+0.612
+Percentage
+Pruned
+95.00
+95.00
+45.00
+59.70
+52.30
+PR ED IC TED M EMORY R EDUC T ION R E SU LT S
+TABLE III
+Architecture
+MNIST Classiﬁer
+CIFAR10 Classiﬁer
+ResNet50 Classiﬁer
+YOLOv3 Detector
+FasterRCNN Detector
+Initial
+1724320
+23412032
+95228552
+247586164
+190270652
+Memory required for
+network parameters (bytes)
+Pruned
+Pruned &
+Quantized
+88420
+15239888
+63072340
+99036300
+140390612
+9478
+2390274
+1584860
+2239175
+6472874
+Compress
+Rate
+182×
+9.8×
+60×
+110×
+29×
+r =
+nb
+nlog2 (k) + kb
+.
+(2)
+Using this compression ratio, the number of bytes occupied
+by the quantized model was estimated.
+Both the image classiﬁcation and object detection archi-
+tectures were pruned and quantized using the aforementioned
+compression pipeline (see Fig. 1). As indicated in Table III,
+after these pruning and quantization steps we reach up to 182×
+compression rate for the MNIST classiﬁer and 110× for the
+YOLOv3 detector.
+Presented in the following subsections are the percentage
+of parameters (weights) pruned and the accuracy after the
+retraining step had completed. As a baseline, we used the
+layer-wise pruning from [12] and compared with our class-
+blind pruning method for each network below.
+A. MNIST Classiﬁer
+The dataset used for training and evaluation was the MNIST
+dataset, a popular hand-writing classiﬁcation dataset [7]. As
+shown in Fig. 3 the MNIST classiﬁer architecture exhibited
+very little improvement in accuracy through pruning. With
+our class-blind method, the MNIST classiﬁer actually began
+to increase in accuracy, all the way up to 95% of parameters
+pruned, whereas this is the case only up to 40% for baseline
+layer-wise pruning (see the blue curve in Fig. 3). With our
+pruning method, the ﬁnal difference between the initial accu-
+racy of the trained-from-scratch model and the pruned model
+at 95% pruning was about +0.003, indicating a highly over-
+parameterized model. Furthermore, the increase in accuracy
+could be attributed to the additional training conducted on the
+sparse model, or could be a symptom of over-ﬁtting to the
+training data.
+Note that, at a 95% prune rate, layer-wise pruning accuracy
+drops below 0.1, therefore, the plot in Fig. 3 is shown only up
+to 90% pruning rate. Also, at a 100% prune rate the accuracy
+of our class-blind method drops to 0.1, as expected since there
+are ten classes to predict. This indicates that the model was
+not making any meaningful predictions at the 100% prune rate.
+Therefore, the result at 100% prune percentage was omitted
+from Fig. 3. Furthermore, after quantizing even at 95% pruning
+there was essentially no loss in accuracy, as seen in Table II.
+Fig. 3. MNIST Classiﬁer Pruning Results
+Fig. 5. ResNet50 Classiﬁer Pruning Results
+B. CIFAR Classiﬁer
+The dataset used for training and evaluation was the CI-
+FAR10 dataset consisting of 10 classes [8]. The CIFAR
+classiﬁer experienced minor drop in performance when being
+pruned as shown in Fig. 4. There is also a slight initial increase
+in accuracy which remains until approximately 85% of the
+parameters have been pruned. Once again, this indicates a
+highly over-parameterized model of which the ideal network
+architecture can be much sparser. Finally, the CIFAR classiﬁer
+had an accuracy drop of approximately 0.018 (i.e. 1.8%) at
+a pruning percentage of 95% (see Table II). However, the
+accuracy drop in the layer-wise method started much earlier
+(about pruning percentage of 65%) and continued dramatically
+afterwards. Note that due to the very same reason mentioned
+in the previous section, the plot in Fig. 4 is shown up to 90%.
+The subsequent quantization step in our method introduced
+a small additional accuracy loss of 0.001 (see Table II). At
+100% pruning the accuracy falls to 0.1, which indicates that
+the model is not making any meaningful predictions. Therefore
+the result at 100% pruning was again omitted from Fig. 4.
+C. ResNet50
+As shown in red curve in Fig. 5, we managed to prune
+45% of ResNet50 model parameters while having a small
+accuracy drop from 0.834 to 0.825 (see also Table II). Unlike
+our method, the baseline layer-wise pruning, i.e. blue curve in
+Fig. 5, caused an accuracy drop at earlier phase (around 15%)
+and had about 0.76 accuracy value at pruning percentage of
+45%. This is a clear indication of the success of our proposed
+class-blind pruning over the baseline method.
+Our ﬁnal quantization stage introduced an additional drop
+and therefore the ﬁnal accuracy value was 0.747 (see Table II).
+D. YOLOv3
+The dataset used for
+training and evaluation was the
+COCO2014 dataset [24], a popular dataset for object detection.
+Having applied the prune pipeline to YOLOv3, as shown in
+Fig. 6, with a prune threshold of 0.05, the model was pruned
+up to 59.70% sparsity before the threshold was reached. The
+initial 5% pruned caused the steepest decline in the mAP,
+indicating the potential loss of important weights with low
+magnitudes. However, subsequent pruning iterations led to
+small increases in accuracy before a slow decline until the
+59.70% mark. The large number of parameters pruned with
+a relatively small impact on the mAP indicates that YOLOv3
+is overparameterised and sparsiﬁcation can lead to a faster,
+smaller model. Furthermore, it is worth noting that after every
+pruning iteration the model was retrained for three epochs. It is
+Fig. 4. CIFAR Classiﬁer Pruning Results
+Fig. 6. YOLOv3 Detector Pruning Results
+possible that signiﬁcantly increasing the number of retraining
+epochs might minimize the drop in mAP. Note that, unlike the
+previous models, our proposed method exhibited a comparable
+behaviour with the baseline method as depicted in Fig. 6.
+When undergoing the full compression pipeline, a prune
+percentage of 59.70% (see Table II) was applied as it had the
+best weights for the given compression run. Subsequently, the
+quantization of the network resulted in a minimal decrease
+(0.7%) in the mAP of the model. The overall loss in mAP
+through our entire model compression pipeline was 0.059 as
+indicated in Table II.
+E. FasterRCNN
+The dataset used for
+training and evaluation was the
+VOC2007 dataset [25], another popular dataset for object
+detection. Within the FasterRCNN architecture only the base
+(detector) of the network was pruned, which represents ap-
+proximately 52.70% of the entire network weights. Fig. 7
+indicates the percentage of parameters of only the base of the
+network. Unlike YOLOv3, after pruning FasterRCNN there
+was much less drop (0.015 mAP) in accuracy. In fact, the
+iterative pruning methodology pruned the detector parameters
+up to 100% before the initially speciﬁed prune thresholds
+(0.05) were reached. This indicates that the detector is heavily
+over-parameterised, with the network having a drop in mAP
+of 0.025 at 95% parameters pruned (see Fig. 7). The peak
+mAP reached was at 15% parameters pruned with an increase
+in mAP of approximately 0.02. As the prune percentage was
+incremented units of 5%, it is entirely possible that a ﬁner
+interval could result in an even higher accuracy. At a pruning
+percentage of 100% the mAP dropped to 0.1, which indicates
+that the model is not making any meaningful predictions as
+expected. Therefore, the result at 100% pruning was omitted
+from Fig. 7. Unlike our proposed method,
+the layer-wise
+pruning caused a signiﬁcant drop after 80% pruning rate.
+The subsequent quantization resulted in an overall decrease
+in mAP of 0.065 (see Table II). Consequently,
+the prune
+percentage of 52.30% was applied as it resulted in the highest
+mAP during the compression run, and the quantization step
+caused the largest decrease in mAP.
+Fig. 7. FasterRCNN Detector Pruning Results
+V I . D I SCU S S ION
+In this study, we have shown how class blind pruning and
+quantization can reduce the size of the model. The main
+idea was to ﬁnd the parameters over the whole model that
+have minimal impact and set them to zero, thus reducing the
+computational cost. Class blind pruning that is applied on
+the whole model was chosen instead of layer-wise pruning
+used in [12] due to the fact
+that network tends to over
+parameterize in the deep layers. Thus by using class-blind
+pruning, it is possible to maintain the early parameters which
+are important for the construction of the high level features
+while removing the ones which are not contributing much into
+the ﬁnal predictions. All our experimental results conﬁrmed
+that class-blind pruning results in less drop in accuracy in
+contrast to layer-wise pruning.
+Model Compression in the two object detection architec-
+tures chosen proved to be very promising, with the detector of
+the FasterRCNN being almost entirely prunable with minimal
+impact to accuracy. Furthermore, YOLOv3 was pruned to quite
+a signiﬁcant extent with very little drop in mAP, with up to
+50% of its parameters pruned while maintaining not breaking
+the threshold of 0.05 mAP. This indicates that the use of our
+model compression method in advanced architectures, such as
+these deep object detectors, can enable execution on resource
+constrained environments in real-time scenarios.
+The percentage of the weights that were pruned were
+depending largely on the model, the dataset and the task that
+network was performing. Object Detectors despite the fact that
+they have vastly more parameters than classiﬁers, arrived at a
+lower pruning percentage. Even for Faster-RCNN which was
+using ResNet101 as a backbone that contains 44.5 million
+parameters and was trained on a realatively easy dataset as
+VOC2007, the percentage of pruned weights was lower than
+all the classiﬁers.
+The use of pruning and quantization can be seen as manag-
+ing a tradeoff between performance and accuracy; the greedier
+the pruning (i.e. high prune percentages) and quantization
+strategies applied (i.e. quantization into fewer clusters or lower
+bits) the greater the loss in performance at the expense of
+reduced computation. The application of such methodologies
+should attempt to address the usage context of the generated
+network before settling on how much the models should be
+compressed.
+Class-blind pruning often caused a performance increase
+at different percentages when a model is vastly overparam-
+etarized. This regularization effect is likely due to the re-
+moval of low-importance weights that simply interfere with
+network predictions, however often the percentage of parame-
+ters pruned were very high when the performance increase
+manifested. A similar effect has been shown with targeted
+dropout [26] where dropout is applied on the lower absolute
+values of the layers. This regularization effect, i.e. increase
+in the prediction accuracy after pruning, has been observed
+in Faster-RCNN. However that is not the case with YOLOv3
+where an initial drop occurs. We believe that the main reason
+why this accuracy increase does not occur in YOLOv3 is
+the fact that it was trained on MS-COCO which is a rather
+difﬁcult dataset with more classes than VOC2007 and more
+objects with similar features to each other. Consequently, as
+our experimental ﬁndings suggest, the regularization theory as
+stated by Han et. al. [12] appears to hold true even for high-
+complexity models such as FasterRCNN.
+Han et. al. demonstrated in [12] that the sparsiﬁcation (i.e.
+pruning) of weight matrices leads directly to lower inference
+times. This is because fewer ﬂoating point operations have
+to be conducted and fewer gradients having to be computed
+due to fewer weights being involved with inference. However,
+due to limitations with PyTorch and CUDA regarding the use
+of sparse matrices, we were unable to directly collect the
+inference time improvements as a result of pruning. However
+it still holds true that, for example, pruning 50% of network
+parameters will lead to a proportionate 50% drop in inference
+time for forward and backward propagation, as shown in [12].
+As an extension of this work, we are planning to employ
+an alternative framework, such as TensorFlow where sparse
+matrices are available, in order to solidify this claim.
+For the Quantization choosing k-means as a method of
+clustering was implemented to run on the GPU since, applying
+k-means over millions of parameters was not efﬁcient. The
+identity in Eq. (1) was utilized in order to create a dynamic
+clustering that was dependant on the number of parameters
+for each layer. While the weights were clustered signiﬁcantly
+there was not a signiﬁcant drop in the accuracy. However at
+least a small drop in the accuracy is to be naturally expected
+by using quantization which is more to the fact that it requires
+clustering, than lowering the precision of the weights.
+V I I . CONC LU S ION
+We presented a model compression method to reduce the
+inference time and memory footprint of advanced deep neural
+networks. We showed the application of our method on
+different image classiﬁcation and object detection models.
+We presented various experimental ﬁndings showing the
+predicted memory footprint impacts of k-means quantization
+on the network architectures that the pruning pipeline was
+applied to. Our ﬁndings on reduction of memory footprint are
+very much aligned with the results in Han et. al. in [12] which
+concretely showed the memory footprint impacts that k-means
+quantization can have.
+We note that reduction of inference time was supported by
+the ﬁndings presented in [12], showing that sparsiﬁcation of
+weights matrices can speed up inference time (and provide
+more energy efﬁcient networks) by the reduction in ﬂoating
+point operations that are to be conducted in a forward or
+backward pass. While the investigation presented in this study
+was unable to obtain concrete inference time measurements
+due to lack of capabilities of software tools, it was shown that
+the inference time speedups are theoretically possible.
+R E FERENC E S
+[1] A. Krizhevsky, I. Sutskever, and G. E. Hinton, “Imagenet classiﬁcation
+with deep convolutional neural networks,” in Advances in Neural Infor-
+mation Processing Systems 25, F. Pereira, C. J. C. Burges, L. Bottou, and
+K. Q. Weinberger, Eds. Curran Associates, Inc., 2012, pp. 1097–1105.
+[2] J. Rothfuss, F. Ferreira, E. E. Aksoy, Y. Zhou, and T. Asfour, “Deep
+episodic memory: Encoding, recalling, and predicting episodic expe-
+riences for robot action execution,” IEEE Robotics and Automation
+Letters, vol. 3, no. 4, pp. 4007–4014, 2018.
+[3] D. Silver, A. Huang, C. J. Maddison, A. Guez, L. Sifre, G. van den
+Driessche, J. Schrittwieser, I. Antonoglou, V. Panneershelvam, M. Lanc-
+tot, S. Dieleman, D. Grewe, J. Nham, N. Kalchbrenner, I. Sutskever,
+T. Lillicrap, M. Leach, K. Kavukcuoglu, T. Graepel, and D. Hassabis,
+“Mastering the game of Go with deep neural networks and tree search,”
+Nature, vol. 529, no. 7587, pp. 484–489, 2016.
+[4] K. He, G. Gkioxari, P. Doll ´ar,
+and R. B. Girshick,
+“Mask
+R-CNN,” CoRR, vol. abs/1703.06870, 2017.
+[Online]. Available:
+http://arxiv.org/abs/1703.06870
+[5] R. Hadsell, A. Erkan, P. Sermanet, M. Scofﬁer, U. Muller, and Y. LeCun,
+“Deep belief net learning in a long-range vision system for autonomous
+off-road driving,” in Intelligent Robots and Systems, 2008, pp. 628–633.
+[6] S. D. Pendleton, H. Andersen, X. Du, X. Shen, M. Meghjani, Y. H. Eng,
+D. Rus, and M. H. Ang, “Perception, planning, control, and coordination
+for autonomous vehicles,” Machines, vol. 5, no. 1, 2017.
+[7] Y. LeCun and C. Cortes, “MNIST handwritten digit database,”
+http://yann.lecun.com/exdb/mnist/, 2010.
+[8] A. Krizhevsky, V. Nair, and G. Hinton, “Cifar-10 (canadian institute for
+advanced research),” http://www.cs.toronto.edu/ kriz/cifar.html, 2010.
+[9] K. He, X. Zhang, S. Ren, and J. Sun, “Delving deep into rectiﬁers:
+Surpassing human-level performance on imagenet classiﬁcation,” CoRR,
+vol. abs/1502.01852, 2015.
+[10] J. Redmon and A. Farhadi, “Yolov3: An incremental improvement,”
+arXiv preprint arXiv:1804.02767, 2018.
+[11] S. Ren, K. He, R. Girshick, and J. Sun, “Faster r-cnn: Towards real-time
+object detection with region proposal networks,” in Advances in neural
+information processing systems, 2015, pp. 91–99.
+[12] S. Han, H. Mao, and W. J. Dally, “Deep compression: Compressing
+deep neural networks with pruning, trained quantization and huffman
+coding,” arXiv preprint arXiv:1510.00149, 2015.
+[13] P. Molchanov, S. Tyree, T. Karras, T. Aila, and J. Kautz, “Pruning
+convolutional neural networks for resource efﬁcient transfer learning,”
+CoRR, vol. abs/1611.06440, 2016.
+[14] Z. Liu, J. Li, Z. Shen, G. Huang, S. Yan, and C. Zhang, “Learning
+efﬁcient convolutional networks through network slimming,” CoRR, vol.
+abs/1708.06519, 2017.
+[15] J. Luo, J. Wu, and W. Lin, “Thinet: A ﬁlter level pruning method for
+deep neural network compression,” CoRR, 2017.
+[16] A. See, M. Luong, and C. D. Manning, “Compression of neural machine
+translation models via pruning,” CoRR, 2016.
+[17] Y. Guo, “A survey on methods and theories of quantized neural net-
+works,” CoRR, 2018.
+[18] M. Courbariaux, Y. Bengio, and J. David, “Binaryconnect: Training deep
+neural networks with binary weights during propagations,” CoRR, vol.
+abs/1511.00363, 2015.
+[19] A. Polino, R. Pascanu, and D. Alistarh, “Model compression via
+distillation and quantization,” CoRR, 2018.
+[20] D. Soudry, I. Hubara, and R. Meir, “Expectation backpropagation:
+Parameter-free training of multilayer neural networks with continuous
+or discrete weights,” in Advances in Neural Information Processing
+Systems, 2014, pp. 963–971.
+[21] X. Li, S. Chen, X. Hu, and J. Yang, “Understanding the disharmony
+between dropout and batch normalization by variance shift,” arXiv
+preprint arXiv:1801.05134, 2018.
+[22] J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and L. Fei-Fei, “ImageNet:
+A Large-Scale Hierarchical Image Database,” in CVPR09, 2009.
+[23] T.-Y. Lin, P. Doll ´ar, R. Girshick, K. He, B. Hariharan, and S. Belongie,
+“Feature pyramid networks for object detection,” in CVPR, 2017, pp.
+2117–2125.
+[24] T.-Y. Lin, M. Maire, S. Belongie, J. Hays, P. Perona, D. Ramanan,
+P. Doll ´ar, and C. L. Zitnick, “Microsoft coco: Common objects in
+context,” in ECCV. Springer, 2014, pp. 740–755.
+[25] M. Everingham, L. Van Gool, C. K.
+I. Williams,
+J. Winn,
+and A. Zisserman,
+“The
+PASCAL Visual Object Classes
+Challenge
+2007
+(VOC2007)
+Results,”
+http://www.pascal-
+network.org/challenges/VOC/voc2007/workshop/index.html.
+[26] A. N. Gomez, I. Zhang, K. Swersky, Y. Gal, and G. E. Hinton, “Targeted
+dropout,” 2018.

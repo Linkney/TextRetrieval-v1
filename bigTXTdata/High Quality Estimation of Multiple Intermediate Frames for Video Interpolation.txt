@@ -1,0 +1,950 @@
+Super SloMo: High Quality Estimation of Multiple Intermediate Frames
+for Video Interpolation
+Huaizu Jiang1
+Ming-Hsuan Yang3,2
+1UMass Amherst
+Deqing Sun2
+Varun Jampani2
+Erik Learned-Miller1
+Jan Kautz2
+2NVIDIA 3UC Merced
+{hzjiang,elm}@cs.umass.edu,{deqings,vjampani,jkautz}@nvidia.com, mhyang@ucmerced.edu
+8
+1
+0
+2
+l
+u
+J
+3
+1
+]
+V
+C
+.
+s
+c
+[
+2
+v
+0
+8
+0
+0
+0
+.
+2
+1
+7
+1
+:
+v
+i
+X
+r
+a
+Abstract
+Given two consecutive frames, video interpolation aims
+at generating intermediate frame(s) to form both spatially
+and temporally coherent video sequences. While most
+existing methods focus on single-frame interpolation, we
+propose an end-to-end convolutional neural network for
+variable-length multi-frame video interpolation, where the
+motion interpretation and occlusion reasoning are jointly
+modeled. We start by computing bi-directional optical
+ﬂow between the input images using a U-Net architecture.
+These ﬂows are then linearly combined at each time step to
+approximate the intermediate bi-directional optical ﬂows.
+These approximate ﬂows, however, only work well in locally
+smooth regions and produce artifacts around motion bound-
+aries. To address this shortcoming, we employ another U-
+Net to reﬁne the approximated ﬂow and also predict soft vis-
+ibility maps. Finally, the two input images are warped and
+linearly fused to form each intermediate frame. By apply-
+ing the visibility maps to the warped images before fusion,
+we exclude the contribution of occluded pixels to the inter-
+polated intermediate frame to avoid artifacts. Since none
+of our learned network parameters are time-dependent, our
+approach is able to produce as many intermediate frames as
+needed. To train our network, we use 1,132 240-fps video
+clips, containing 300K individual video frames. Experimen-
+tal results on several datasets, predicting different numbers
+of interpolated frames, demonstrate that our approach per-
+forms consistently better than existing methods.
+1. Introduction
+There are many memorable moments in your life that
+you might want to record with a camera in slow-motion
+because they are hard to see clearly with your eyes:
+the
+ﬁrst time a baby walks, a difﬁcult skateboard trick, a dog
+catching a ball, etc. While it is possible to take 240-fps
+(frame-per-second) videos with a cell phone, professional
+high-speed cameras are still required for higher frame rates.
+In addition, many of the moments we would like to slow
+down are unpredictable, and as a result, are recorded at
+standard frame rates. Recording everything at high frame
+rates is impractical–it requires large memories and is power-
+intensive for mobile devices.
+Thus it is of great interest to generate high-quality slow-
+motion video from existing videos.
+In addition to trans-
+forming standard videos to higher frame rates, video inter-
+polation can be used to generate smooth view transitions.
+It also has intriguing new applications in self-supervised
+learning, serving as a supervisory signal to learn optical
+ﬂow from unlabeled videos [15, 16].
+It is challenging to generate multiple intermediate video
+frames because the frames have to be coherent, both spa-
+tially and temporally. For instance, generating 240-fps
+videos from standard sequences (30-fps) requires interpo-
+lating seven intermediate frames for every two consecutive
+frames. A successful solution has to not only correctly in-
+terpret the motion between two input images (implicitly or
+explicitly), but also understand occlusions. Otherwise, it
+may result in severe artifacts in the interpolated frames, es-
+pecially around motion boundaries.
+Existing methods mainly focus on single-frame video in-
+terpolation and have achieved impressive performance for
+this problem setup [15, 16, 19, 20]. However, these methods
+cannot be directly used to generate arbitrary higher frame-
+rate videos. While it is an appealing idea to apply a single-
+frame video interpolation method recursively to generate
+multiple intermediate frames, this approach has at least two
+limitations. First, recursive single-frame interpolation can-
+not be fully parallelized, and is therefore slow, since some
+frames cannot be computed until other frames are ﬁnished
+(e.g., in seven-frame interpolation, frame 2 depends on 0
+and 4, while frame 4 depends on 0 and 8). Errors also accu-
+mulates during recursive interpolation. Second, it can only
+generate 2i − 1 intermediate frames (e.g., 3, 7). As a re-
+sult, one cannot use this approach (efﬁciently) to generate
+1008-fps video from 24-fps, which requires generating 41
+1
+intermediate frames.
+In this paper we present a high-quality variable-length
+multi-frame interpolation method that can interpolate a
+frame at any arbitrary time step between two frames. Our
+main idea is to warp the input two images to the speciﬁc
+time step and then adaptively fuse the two warped images
+to generate the intermediate image, where the motion inter-
+pretation and occlusion reasoning are modeled in a single
+end-to-end trainable network. Speciﬁcally, we ﬁrst use a
+ﬂow computation CNN to estimate the bi-directional optical
+ﬂow between the two input images, which is then linearly
+fused to approximate the required intermediate optical ﬂow
+in order to warp input images. This approximation works
+well in smooth regions but poorly around motion bound-
+aries. We therefore use another ﬂow interpolation CNN
+to reﬁne the ﬂow approximations and predict soft visibility
+maps. By applying the visibility maps to the warped im-
+ages before fusion, we exclude the contribution of occluded
+pixels to the interpolated intermediate frame, reducing ar-
+tifacts. The parameters of both our ﬂow computation and
+interpolation networks are independent of the speciﬁc time
+step being interpolated, which is an input to the ﬂow inter-
+polation network. Thus, our approach can generate as many
+intermediate frames as needed in parallel,
+To train our network, we collect 240-fps videos from
+YouTube and hand-held cameras [29].
+In total, we have
+1.1K video clips, consisting of 300K individual video
+frames with a typical resolution of 1080 × 720. We
+then evaluate our trained model on several other indepen-
+dent datasets that require different numbers of interpola-
+tions, including the Middlebury [1], UCF101 [28], slowﬂow
+dataset [10], and high-frame-rate MPI Sintel [10]. Experi-
+mental results demonstrate that our approach signiﬁcantly
+outperforms existing methods on all datasets. We also eval-
+uate our unsupervised (self-supervised) optical ﬂow results
+on the KITTI 2012 optical ﬂow benchmark [6] and obtain
+better results than the recent method [15].
+2. Related Work
+Video interpolation. The classical approach to video in-
+terpolation is based on optical ﬂow [7, 2], and interpola-
+tion accuracy is often used to evaluate optical ﬂow algo-
+rithms [1, 32]. Such approaches can generate intermediate
+frames at arbitrary times between two input frames. Our ex-
+periments show that state-of-the-art optical ﬂow method [9],
+coupled with occlusion reasoning [1], can serve as a strong
+baseline for frame interpolation. However, motion bound-
+aries and severe occlusions are still challenging to existing
+ﬂow methods [4, 6], and thus the interpolated frames tend
+to have artifacts around boundaries of moving objects. Fur-
+thermore, the intermediate ﬂow computation (i.e., ﬂow in-
+terpolation) and occlusion reasoning are based on heuristics
+and not end-to-end trainable.
+Mahajan et al. [17] move the image gradients to a given
+time step and solve a Poisson equation to reconstruct the
+interpolated frame. This method can also generate multi-
+ple intermediate frames, but is computationally expensive
+because of the complex optimization problems. Meyer et
+al. [18] propose propagating phase information across ori-
+ented multi-scale pyramid levels for video interpolation.
+While achieving impressive performance, this method still
+tends to fail for high-frequency contents with large motions.
+The success of deep learning in high-level vision tasks
+has inspired numerous deep models for low-level vision
+tasks, including frame interpolation. Long et al. [16] use
+frame interpolation as a supervision signal to learn CNN
+models for optical ﬂow. However, their main target is op-
+tical ﬂow and the interpolated frames tend to be blurry.
+Niklaus et al. [19] consider the frame interpolation as a lo-
+cal convolution over the two input frames and use a CNN to
+learn a spatially-adaptive convolution kernel for each pixel.
+Their method obtains high-quality results. However, it is
+both computationally expensive and memory intensive to
+predict a kernel for every pixel. Niklaus et al. [20] im-
+prove the efﬁciency by predicting separable kernels. But
+the motion that can be handled is limited by the kernel size
+(up to 51 pixels). Liu et al. [15] develop a CNN model
+for frame interpolation that has an explicit sub-network for
+motion estimation. Their method obtains not only good in-
+terpolation results but also promising unsupervised ﬂow es-
+timation results on KITTI 2012. However, as discussed pre-
+viously, these CNN-based single-frame interpolation meth-
+ods [19, 20, 15] are not well-suited for multi-frame interpo-
+lation.
+Wang et al. [33] investigate to generate intermediate
+frames for a light ﬁeld video using video frames taken from
+another standard camera as references.
+In contrast, our
+method aims at producing intermediate frames for a plain
+video and does not need reference images.
+Learning optical ﬂow. State-of-the-art optical ﬂow meth-
+ods [35, 36] adopt the variational approach introduce by
+Horn and Schunck [8]. Feature matching is often adopted
+to deal with small and fast-moving objects [3, 23]. How-
+ever, this approach requires the optimization of a complex
+objective function and is often computationally expensive.
+Learning is often limited to a few parameters [13, 26, 30].
+Recently, CNN-based models are becoming increasingly
+popular for learning optical ﬂow between input images.
+Dosovitskiy et al. [5] develop two network architectures,
+FlowNetS and FlowNetC, and show the feasibility of learn-
+ing the mapping from two input images to optical ﬂow using
+CNN models. Ilg et al. [9] further use the FlowNetS and
+FlowNetC as building blocks to design a larger network,
+FlowNet2, to achieve much better performance. Two recent
+methods have also been proposed [22, 31] to build the clas-
+sical principles of optical ﬂow into the network architecture,
+achieving comparable or even better results and requiring
+less computation than FlowNet2 [9].
+In addition to the supervised setting, learning optical
+ﬂow using CNNs in an unsupervised way has also been ex-
+plored. The main idea is to use the predicted ﬂow to warp
+one of the input images to another. The reconstruction error
+serves as a supervision signal to train the network. Instead
+of merely considering two frames [38], a memory module
+is proposed to keep the temporal information of a video se-
+quence [21]. Similar to our work, Liang et al. [14] train
+optical ﬂow via video frame extrapolation, but their train-
+ing uses the ﬂow estimated by the EpicFlow method [23] as
+an additional supervision signal.
+3. Proposed Approach
+In this section, we ﬁrst introduce optical ﬂow-based in-
+termediate frame synthesis in section 3.1. We then explain
+details of our ﬂow computation and ﬂow interpolation net-
+works in section 3.2. In section 3.3, we deﬁne the loss func-
+tion used to train our networks.
+3.1. Intermediate Frame Synthesis
+Given two input images I0 and I1 and a time t ∈ (0, 1),
+our goal is to predict the intermediate image ˆIt at time
+T = t. A straightforward way is to accomplish this is to
+train a neural network [16] to directly output the RGB pix-
+els of ˆIt . In order to do this, however, the network has to
+learn to interpret not only the motion pattens but also the
+appearance of the two input images. Due to the rich RGB
+color space, it is hard to generate high-quality intermediate
+images in this way. Inspired by [1] and recent advances in
+single intermediate video frame interpolation [19, 20, 15],
+we propose fusing the warped input images at time T = t.
+Let Ft→0 and Ft→1 denote the optical ﬂow from It to I0
+and It to I1 , respectively. If these two ﬂow ﬁelds are known,
+we can synthesize the intermediate image ˆIt as follows:
+ˆIt = α0 (cid:12) g(I0 , Ft→0 ) + (1 − α0 ) (cid:12) g(I1 , Ft→1 ),
+(1)
+where g(·, ·) is a backward warping function, which can be
+implemented using bilinear interpolation [40, 15] and is dif-
+ferentiable. The parameter α0 controls the contribution of
+the two input images and depend on two factors: temporal
+consistency and occlusion reasoning. (cid:12) denotes element-
+wise multiplication, implying content-aware weighting of
+input images. For temporal consistency, the closer the time
+step T = t is to T = 0, the more contribution I0 makes to
+ˆIt ; a similar property holds for I1 . On the other hand, an
+important property of the video frame interpolation prob-
+lem is that if a pixel p is visible at T = t, it is most likely
+at least visible in one of the input images,1 which means
+1 It is a rare case but it may happen that an object appears and disappears
+between I0 and I1 .
+Figure 1: Illustration of intermediate optical ﬂow approxi-
+mation. The orange pixel borrows optical ﬂow from pixels
+at the same position in the ﬁrst and second images.
+the occlusion problem can be addressed. We therefore in-
+troduce visibility maps Vt←0 and Vt←1 . Vt←0 (p) ∈ [0, 1]
+denotes whether the pixel p remains visible (0 is fully oc-
+cluded) when moving from T = 0 to T = t. Combining the
+temporal consistency and occlusion reasoning, we have
+(cid:12) (cid:0)(1− t)Vt←0 (cid:12) g(I0 , Ft→0 )+ tVt←1 (cid:12) g(I1 , Ft→1 )(cid:1),
+ˆIt =
+1
+Z
+where Z = (1 − t)Vt→0 + tVt→1 is a normalization factor.
+3.2. Arbitrary-time Flow Interpolation
+Since we have no access to the target intermediate image
+It , it is hard to compute the ﬂow ﬁelds Ft→0 and Ft→1 .
+To address this issue, we can approximately synthesize the
+intermediate optical ﬂow Ft→0 and Ft→1 using the optical
+ﬂow between the two input images F0→1 and F1→0 .
+Consider the toy example shown in Fig. 1, where each
+column corresponds to a certain time step and each dot rep-
+resents a pixel. For the orange dot p at T = t, we are in-
+terested in synthesizing its optical ﬂow to its corresponding
+pixel at T = 1 (the blue dashed arrow). One simple way
+is to borrow the optical ﬂow from the same grid positions
+at T = 0 and T = 1 (blue and red solid arrows), assuming
+that the optical ﬂow ﬁeld is locally smooth. Speciﬁcally,
+Ft→1 (p) can be approximated as
+ˆFt→1 (p) = (1 − t)F0→1 (p)
+or
+ˆFt→1 (p) = −(1 − t)F1→0 (p),
+(2)
+(3)
+where we take the direction of the optical ﬂow between the
+two input images in the same or opposite directions and
+scale the magnitude accordingly ((1 − t) in (3)). Similar to
+the temporal consistency for RGB image synthesis, we can
+approximate the intermediate optical ﬂow by combining the
+bi-directional input optical ﬂow as follows (in vector form).
+ˆFt→0 = −(1 − t)tF0→1 + t2F1→0
+ˆFt→1 = (1 − t)2F0→1 − t(1 − t)F1→0 .
+(4)
+I0
+It
+I1
+F0→1
+F1→0
+ˆFt→1
+ˆFt→0
+Ft→1
+Ft→0
+(cid:107)Ft→1 − ˆFt→1 (cid:107)2
+(cid:107)Ft→0 − ˆFt→0(cid:107)2
+Figure 2: Samples of ﬂow interpolation results, where t =
+0.5. The entire scene is moving toward the left (due to cam-
+era translation) and the motorcyclist is independently mov-
+ing left. The last row shows that the reﬁnement from our
+ﬂow interpolation CNN is mainly around the motion bound-
+aries (the whiter a pixel, the bigger the reﬁnement).
+This approximation works well in smooth regions but
+poorly around motion boundaries, because the motion near
+motion boundaries is not locally smooth. To reduce artifacts
+around motion boundaries, which may cause poor image
+synthesis, we propose learning to reﬁne the initial approx-
+imation. Inspired by the cascaded architecture for optical
+ﬂow estimation in [9], we train a ﬂow interpolation sub-
+network. This sub-network takes the input images I0 and
+I1 , the optical ﬂows between them F0→1 and F0→1 , the
+ﬂow approximations ˆFt→0 and ˆF0→1 , and two warped in-
+put images using the approximated ﬂows g(I0 , ˆFt→0 ) and
+g(I1 , ˆFt→1 ) as input, and outputs reﬁned intermediate opti-
+cal ﬂow ﬁelds Ft→1 and Ft→0 . Sample interpolation results
+are displayed in Figure 2.
+As discussed in Section 3.1, visibility maps are essential
+to handle occlusions. Thus, We also predict two visibility
+maps Vt←0 and Vt←1 using the ﬂow interpolation CNN, and
+enforce them to satisfy the following constraint
+Vt←0 = 1 − Vt←1 .
+(5)
+Without such a constraint, the network training diverges.
+Intuitively, Vt←0 (p) = 0 implies Vt←1 (p) = 1, meaning
+that the pixel p from I0 is occluded at T = t, we should
+fully trust I1 and vice versa. Note that it rarely happens that
+a pixel at time t is occluded both at time 0 and 1. Since
+I0
+I1
+Ft→0
+Ft→1
+g(I0 , Ft→0 )
+g(I1 , Ft→1 )
+Vt←0
+Vt←1
+ˆIt
+PSNR=30.23
+ˆIt w/o visibility maps
+PSNR=30.06
+Figure 3: Samples of predicted visibility maps (best viewed
+in color), where t = 0.5. The arms move downwards from
+T = 0 to T = 1. So the area right above the arm at T = 0 is
+visible at t but the area right above the arm at T = 1 is oc-
+cluded (i.e., invisible) at t. The visibility maps in the fourth
+row clearly show this phenomenon. The white area around
+arms in Vt←0 indicate such pixels in I0 contribute most to
+the synthesized ˆIt while the occluded pixels in I1 have little
+contribution. Similar phenomena also happen around mo-
+tion boundaries (e.g., around bodies of the athletes).
+we use soft visibility maps, when the pixel p is visible both
+in I0 and I1 , the network learns to adaptively combine the
+information from two images, similarly to the matting ef-
+fect [24]. Samples of learned visibility maps are shown in
+3.3. Training
+Given input images I0 and I1 , a set of intermediate
+frames {Iti }N
+i=1 between them, where ti ∈ (0, 1), and our
+predictions of intermediate frames { ˆIti }N
+i=1 , our loss func-
+tion is a linear combination of four terms:
+l = λr lr + λp lp + λw lw + λs ls .
+(7)
+Reconstruction loss lr models how good the reconstruc-
+tion of the intermediate frames is:
+N(cid:88)
+i=1
+lr =
+1
+N
+(cid:107) ˆIti − Iti (cid:107)1 .
+(8)
+Such a reconstruction loss is deﬁned in the RGB space,
+where pixel values are in the range [0, 255].
+Perceptual loss. Even though we use the L1 loss to
+model the reconstruction error of intermediate frames, it
+might still cause blur in the predictions. We therefore use
+a perceptual loss [11] to preserve details of the predic-
+tions and make interpolated frames sharper, similar to [20].
+Speciﬁcally, the perceptual loss lp is deﬁned as
+N(cid:88)
+i=1
+lp =
+1
+N
+(cid:107)φ( ˆIt ) − φ(It )(cid:107)2 ,
+(9)
+where φ denote the conv4 3 features of an ImageNet pre-
+trained VGG16 model [27]
+Warping loss. Besides intermediate predictions, we also
+introduce the warping loss lw to model the quality of the
+computed optical ﬂow, deﬁned as
+N(cid:88)
+lw =(cid:107)I0 − g(I1 , F0→1 )(cid:107)1 + (cid:107)I1 − g(I0 , F1→0 )(cid:107)1+
+1
+(cid:107)Iti − g(I0 , ˆFti→0 )(cid:107)1 +
+1
+(cid:107)Iti − g(I1 , ˆFti→1 )(cid:107)1 .
+N
+N
+N(cid:88)
+(10)
+i=1
+i=1
+Smoothness loss. Finally, we add a smoothness term [15]
+to encourage neighboring pixels to have similar ﬂow values:
+ls = (cid:107)∇F0→1 (cid:107)1 + (cid:107)∇F1→0 (cid:107)1 .
+(11)
+The weights have been set empirically using a validation set
+as λr = 0.8, λp = 0.005, λw = 0.4, and λs = 1. Every com-
+ponent of our network is differentiable, including warping
+and ﬂow approximation. Thus our model can be end-to-end
+trained.
+4. Experiments
+4.1. Dataset
+To train our network, we use the 240-fps videos
+from [29], taken with hand-held cameras. We also collect
+a dataset of 240-fps videos from YouTube. Table 1 sum-
+marizes the statistics of the two datasets and Fig. 5 shows
+Figure 4: Network architecture of our approach.
+the fourth row of Fig. 3.
+In order to do ﬂow interpolation, we need to ﬁrst com-
+pute the bi-directional optical ﬂow between the two input
+images. Recent advances in deep learning for optical ﬂow
+have demonstrated great potential to leverage deep CNNs to
+reliably estimate optical ﬂow. In this paper, we train a ﬂow
+computation CNN, taking two input images I0 and I1 , to
+jointly predict the forward optical ﬂow F0→1 and backward
+optical ﬂow F1→0 between them.
+Our entire network is summarized in Fig. 4. For the ﬂow
+computation and ﬂow interpolation CNNs, we adopt the U-
+Net architecture [25]. The U-Net is a fully convolutional
+neural network, consisting of an encoder and a decoder,
+with skip connections between the encoder and decoder fea-
+tures at the same spatial resolution For both networks, we
+have 6 hierarchies in the encoder, consisting of two convo-
+lutional and one Leaky ReLU (α = 0.1) layers. At the end of
+each hierarchy except the last one, an average pooling layer
+with a stride of 2 is used to decrease the spatial dimension.
+There are 5 hierarchies in the decoder part. At the begin-
+ning of each hierarchy, a bilinear upsampling layer is used
+to increase the spatial dimension by a factor of 2, followed
+by two convolutional and Leaky ReLU layers.
+For the ﬂow computation CNN, it is crucial to have large
+ﬁlters in the ﬁrst few layers of the encoder to capture long-
+range motion. We therefore use 7 × 7 kernels in the ﬁrst two
+convoluional layers and 5 × 5 in the second hierarchy. For
+layers in the rest of entire network, we use 3 × 3 convolu-
+tional kernels. The detailed conﬁguration of the network is
+described in our supplementary material.
+We found concatenating output of the encoders in two
+networks together as input to the decoder of the ﬂow in-
+terpolation network yields slightly better results. More-
+over, instead of directly predicting the intermediate optical
+ﬂow in the ﬂow interpolation network, we found it performs
+slightly better to predict intermediate optical ﬂow residuals.
+In speciﬁc, the ﬂow interpolation network predicts ∆Ft→0
+and ∆Ft→1 . We then have
+Ft→0 = ˆFt→0 + ∆Ft→0
+Ft→1 = ˆFt→1 + ∆Ft→1
+(6)
+Table 1: Statistics of dataset we use to train our network.
+#video clips
+#video frames
+mean #frames per clip
+resolution
+Adobe240-fps [29] YouTube240-fps
+118
+1,014
+79,768
+296,352
+670.3
+293.1
+720p
+720p
+Table 2: Effectiveness of multi-frame video interpolation on
+the Adobe240-fps dataset.
+PSNR
+30.26
+31.02
+31.19
+SSIM
+0.909
+0.917
+0.918
+IE
+8.85
+8.43
+8.30
+1 interp
+3 interp
+7 interp
+Table 3: Effectiveness of different components of our model
+on the Adobe240-fps dataset.
+Adobe240-fps
+w/o ﬂow interpolation
+w/o vis map
+w/o perceptual loss
+w/o warping loss
+w/o smoothness loss
+full model
+PSNR SSIM IE
+30.34
+0.908
+8.93
+31.16
+0.918
+8.33
+30.96
+0.916
+8.50
+30.52
+0.910
+8.80
+8.26
+8.30
+31.19
+31.19
+0.918
+0.918
+YouTube240-fps
+Figure 5: Snapshot of our training data.
+a snapshot of randomly sampled video frames. In total, we
+have 1,132 video clips and 376K individual video frames.
+There are a great variety of scenes in both datasets, from in-
+door to outdoor, from static to moving cameras, from daily
+activities to professional sports, etc.
+We train our network using all of our data and test
+our model on several
+independent datasets,
+including
+the Middlebury benchmark [1], UCF101 [28], slowﬂow
+dataset [10], and high-frame-rate Sintel sequences [10]. For
+Middlebury, we submit our single-frame video interpola-
+tion results of eight sequences to its evaluation server. For
+UCF101, in every triple of frames, the ﬁrst and third ones
+are used as input to predict the second frame using 379 se-
+quences provided by [15]. The slowﬂow dataset contains
+46 videos taken with professional high-speed cameras. We
+use the ﬁrst and eighth video frames as input, and interpo-
+late intermediate 7 frames, equivalent to converting a 30-fps
+video to a 240-fps one. The original Sintel sequences [4]
+were rendered at 24 fps. 13 of them were re-rendered at
+1008 fps [10]. To convert from 24-fps to 1008-fps using a
+video frame interpolation approach, one needs to insert 41
+in-between frames. However, as discussed in the introduc-
+tion, it is not directly possible with recursive single-frame
+interpolation methods [19, 20, 15] to do so. Therefore, we
+instead predict 31 in-between frames for fair comparisons
+with previous methods.
+Our network is trained using the Adam optimizer [12] for
+500 epochs. The learning rate is initialized to be 0.0001 and
+decreased by a factor of 10 every 200 epochs. During train-
+ing, all video clips are ﬁrst divided into shorter ones with
+12 frames in each and there is no overlap between any of
+two clips. For data augmentation, we randomly reverse the
+direction of entire sequence and select 9 consecutive frames
+for training. On the image level, each video frame is resized
+to have a shorter spatial dimension of 360 and a random
+crop of 352 × 352 plus horizontal ﬂip are performed.
+For evaluation, we report Peak Signal-to-Noise Ra-
+tio (PSNR) and Structural Similarity Index (SSIM) scores
+between predictions and ground-truth in-between video
+frames, as well as the interpolation error (IE) [1], which
+is deﬁned as root-mean-squared (RMS) difference between
+the ground-truth image and the interpolated image.
+4.2. Ablation Studies
+In this section, we perform ablation studies to analyze
+our model. For the ﬁrst two experiments, we randomly sam-
+pled 107 videos from Adobe240-fps dataset for training and
+the remaining 12 ones for testing.
+Effectiveness of multi-frame video interpolation. We ﬁrst
+test whether jointly predicting several in-between frames
+improves the video interpolation results.
+Intuitively, pre-
+dicting a set of in-between frames together might implic-
+itly enforce the network to generate temporally coherent se-
+quences.
+To this end, we train three variants of our model: pre-
+dicting intermediate single, three, and seven frames, which
+are all evenly distributed across time steps. At test time, we
+use each model to predict seven in-between frames. Table 2
+Table 5: Results on the slowﬂow dataset.
+Phase-Based [18]
+FlowNet2 [1, 9]
+SepConv [20]
+Ours
+PSNR SSIM IE
+31.05
+0.858
+8.21
+34.06
+32.69
+0.924
+0.893
+5.35
+34.19
+0.924
+6.79
+6.14
+Table 6: Results on the high-frame-rate Sintel dataset.
+Phase-Based [18]
+FlowNet2 [1, 9]
+SepConv [20]
+Ours
+PSNR SSIM
+28.67
+0.840
+30.79
+0.922
+31.51
+0.911
+32.38
+0.927
+IE
+10.24
+5.78
+6.61
+5.42
+that our model beneﬁts from more training data.
+4.3. Comparison with state-of-the-art methods
+In this section, we compare our approach with state-of-
+the-art methods including phase-based interpolation [18],
+separable adaptive convolution (SepConv) [20], and deep
+voxel ﬂow (DVF) [15]. We also implement a baseline ap-
+proach using the interpolation algorithm presented in [1],
+where we use FlowNet2 [9] to compute the bi-directional
+optical ﬂow results between two input images. FlowNet2 is
+good at capturing global background motion and recovering
+sharp motion boundaries for the optical ﬂow. Thus, when
+coupled with occlusion reasoning [1], FlowNet2 serves as a
+strong baseline.
+Single-frame video interpolation. The interpolation error
+(IE) scores on each sequence form the Middlebury dataset
+are shown in Figure 6.
+In addition to SepConv, we also
+compare our model with other three top-performing mod-
+els on the Middlebury dataset2 , where the interpolation al-
+gorithm [1] is coupled with different optical ﬂow meth-
+ods including MDP-Flow2 [37], PMMST [39], and Deep-
+Flow [34]. Our model achieves the best performance on 6
+out of all 8 sequences. Particularly, the Urban sequence is
+generated synthetically and the Teddy sequence contains
+actually two stereo pairs. The performance of our model
+validates the generalization ability of our approach.
+On UCF101, we compute all metrics using the motion
+masks provided by [15]. The quantitative results are shown
+in Table 4, highlighting the performance of each interpo-
+lation model’s capacity to deal with challenging motion
+regions. Our model consistently outperforms both non-
+neural [18] and CNN-based approaches [20, 15]. Sam-
+2 http://vision.middlebury.edu/flow/eval/
+results/results- i1.php
+Figure 6: Performance comparisons on each sequence of
+the Middlebury dataset. Numbers are obtained from the
+Middlebury evaluation server.
+Table 4: Results on the UCF101 dataset.
+Phase-Based [18]
+FlowNet2 [1, 9]
+DVF [15]
+SepConv [20]
+Ours (Adobe240-fps)
+Ours
+PSNR SSIM IE
+32.35
+0.924
+8.84
+32.30
+0.930
+8.40
+32.46
+0.930
+8.27
+33.02
+0.935
+8.03
+32.84
+0.935
+8.04
+33.14
+0.938
+7.80
+clearly demonstrates that the more intermediate frames we
+predict during training, the better the model is.
+Impact of different components design. We also investi-
+gate the contribution of each component in our model. In
+particular, we study the impact of ﬂow interpolation by re-
+moving the ﬂow reﬁnement from the second U-Net (but
+keep using the visibility maps). We further study the use
+of visibility maps as means of occlusion reasoning. We can
+observe from Table 3 that removing each of three compo-
+nents harms performance. Particularly, the ﬂow interpola-
+tion plays a crucial role, which veriﬁes our motivation to
+introduce the second learned network to reﬁne intermedi-
+ate optical ﬂow approximations. Adding visibility maps
+improves the interpolation performance slightly. Without
+it, there are artifacts generated around motion boundaries,
+as shown in Figure 3. Both of these validate our hypothe-
+sis that jointly learning motion interpretation and occlusion
+reasoning helps video interpolation.
+We also study different loss terms, where the warp-
+ing loss is the most important one. Although adding the
+smoothness terms slightly hurts the performance quantita-
+tively, we fount it is useful to generate visually appealing
+optical ﬂow between input images.
+Impact of the number of training samples. Finally, we
+investigate the effect of the number of training samples.
+We compare two models: one trained on the Adobe240-fps
+dataset only and the other one trained on our full dataset.
+The performance of these two models on the UCF101
+dataset can be found in last two rows Table 4. We can see
+2 input images actual in-between PhaseBased [18] FlowNet2 [1, 9]
+DVF [15]
+SepConv [20]
+ours
+Figure 7: Visual results of a sample from UCF101. Our model produces less artifacts around the brush and the hand (best
+viewed in color). Please see the supplementary material for more image and video results.
+Table 7: Optical ﬂow results on the KITTI 2012 benchmark.
+LDOF[3] EpicFlow[23] FlowNetS[5] DVF[15] Ours
+EPE
+12.4
+3.8
+9.1
+14.6
+13.0
+4.4. Unsupervised Optical Flow
+Our video frame interpolation approach has an unsu-
+pervised (self-supervised) network (the ﬂow computation
+CNN) that can compute the bi-directional optical ﬂow be-
+tween two input images. Following [15], we evaluate our
+unsupervised forward optical ﬂow results on the testing set
+of KITTI 2012 optical ﬂow benchmark [6]. The average
+end-point error (EPE) scores of different methods are re-
+ported in Table 7. Compared with previous unsupervised
+method DVF [15], our model achieves an average EPE of
+13.0, an 11% relative improvement. Very likely this im-
+provement results from the multi-frame video interpolation
+setting, as DVF [15] has a similar U-Net architecture to
+ours.
+5. Conclusion
+We have proposed an end-to-end trainable CNN that can
+produce as many intermediate video frames as needed be-
+tween two input images. We ﬁrst use a ﬂow computation
+CNN to estimate the bidirectional optical ﬂow between the
+two input frames, and the two ﬂow ﬁelds are linearly fused
+to approximate the intermediate optical ﬂow ﬁelds. We then
+use a ﬂow interpolation CNN to reﬁne the approximated
+ﬂow ﬁelds and predict soft visibility maps for interpolation.
+We use more than 1.1K 240-fps video clips to train our net-
+work to predict seven intermediate frames. Ablation studies
+on separate validation sets demonstrate the beneﬁt of ﬂow
+interpolation and visibility map. Our multi-frame approach
+consistently outperforms state-of-the-art single frame meth-
+ods on the Middlebury, UCF101, slowﬂow, and high-frame-
+rate Sintel datasets. For the unsupervised learning of optical
+Figure 8: PSNR at each time step when generating 31 inter-
+mediate frames on the high-frame-rate Sintel dataset.
+ple interpolation results on a sample from UCF101 can be
+found at Figure 7. More results can be found in our supple-
+mentary material.
+Multi-frame video interpolation.
+For the slowﬂow
+dataset, we predict 7 in-between frames. All experiments
+are performed on the half-resolution images with a spatial
+dimension of 1280 × 1024. On this dataset, our approach
+achieves the best PSNR and SSIM scores and FlowNet2
+achieves the best SSIM and L1 error scores. FlowNet2 is
+good at capturing global motions and thus produces sharp
+prediction results on those background regions, which fol-
+low a global motion pattern. Detailed visual comparisons
+can be found in our supplementary material.
+On the challenging high-frame-rate Sintel dataset, our
+approach signiﬁcantly outperforms all other methods. We
+also show the PSNR scores at each time step in Figure 8.
+Our approach produces the best predictions for each in-
+between time step except slightly worse than SepConv at
+the last time step.
+In summary, our approach achieves state-of-the-art re-
+sults over all datasets, generating single or multiple inter-
+mediate frames. It is remarkable, considering the fact our
+model can be directly applied to different scenarios without
+any modiﬁcation.
+ﬂow, our network outperforms the recent DVF method [15]
+on the KITTI 2012 benchmark.
+Acknowledgement
+We would like to thank Oliver Wang for generously shar-
+ing the Adobe 240-fps data [29]. Yang acknowledges sup-
+port from NSF (Grant No. 1149783).
+A. Network Architecture
+Our ﬂow computation and ﬂow interpolation CNNs
+share a similar U-Net architecture, shown in Figure 9.
+B. Visual Comparisons on UCF101
+Figure 10 and Figure 11 show visual comparisons of
+single-frame interpolation results on the UCF101 dataset.
+For more visual comparisons, please refer to our sup-
+plementary video http://jianghz.me/projects/
+superslomo/superslomo_public.mp4.
+References
+[1] S. Baker, D. Scharstein, J. P. Lewis, S. Roth, M. J. Black,
+and R. Szeliski. A database and evaluation methodology for
+optical ﬂow. IJCV, 92(1):1–31, 2011. 2, 3, 6, 7, 8
+[2] J. Barron, D. Fleet, and S. Beauchemin. Performance of op-
+tical ﬂow techniques. IJCV, 12(1):43–77, 1994. 2
+[3] T. Brox and J. Malik. Large displacement optical ﬂow: De-
+scriptor matching in variational motion estimation. PAMI,
+33(3):500–513, 2011. 2, 8
+[4] D. J. Butler, J. Wulff, G. B. Stanley, and M. J. Black. A
+naturalistic open source movie for optical ﬂow evaluation.
+In ECCV, 2012. 2, 6
+[5] A. Dosovitskiy, P. Fischery, E. Ilg, C. Hazirbas, V. Golkov,
+P. van der Smagt, D. Cremers, T. Brox, et al. Flownet: Learn-
+ing optical ﬂow with convolutional networks. In ICCV, 2015.
+2, 8
+[6] A. Geiger, P. Lenz, and R. Urtasun. Are we ready for au-
+tonomous driving? The KITTI vision benchmark suite. In
+CVPR, 2012. 2, 8
+[7] E. Herbst, S. Seitz, and S. Baker. Occlusion reasoning for
+temporal interpolation using optical ﬂow. Technical report,
+August 2009. 2, 11, 12
+[8] B. Horn and B. Schunck. Determining optical ﬂow. Artiﬁcial
+Intelligence, 16:185–203, 1981. 2
+[9] E. Ilg, N. Mayer, T. Saikia, M. Keuper, A. Dosovitskiy, and
+T. Brox. Flownet 2.0: Evolution of optical ﬂow estimation
+with deep networks. In CVPR, 2017. 2, 3, 4, 7, 8, 11, 12
+[10] J. Janai, F. G ¨uney, J. Wulff, M. Black, and A. Geiger. Slow
+ﬂow: Exploiting high-speed cameras for accurate and diverse
+optical ﬂow reference data. In CVPR, 2017. 2, 6
+[11] J. Johnson, A. Alahi, and L. Fei-Fei. Perceptual losses for
+real-time style transfer and super-resolution. In ECCV, 2016.
+5
+[12] D. Kingma and J. Ba. Adam: A method for stochastic opti-
+mization. arXiv preprint arXiv:1412.6980, 2014. 6
+[13] Y. Li and D. P. Huttenlocher. Learning for optical ﬂow using
+stochastic optimization. In ECCV, 2008. 2
+[14] X. Liang, L. Lee, W. Dai, and E. P. Xing. Dual motion GAN
+for future-ﬂow embedded video prediction. In ICCV, 2017.
+3
+[15] Z. Liu, R. Yeh, X. Tang, Y. Liu, and A. Agarwala. Video
+frame synthesis using deep voxel ﬂow. In ICCV, 2017. 1, 2,
+3, 5, 6, 7, 8, 9, 11, 12
+[16] G. Long, L. Kneip, J. M. Alvarez, H. Li, X. Zhang, and
+Q. Yu. Learning image matching by simply watching video.
+In ECCV, 2016. 1, 2, 3
+[17] D. Mahajan, F.-C. Huang, W. Matusik, R. Ramamoorthi, and
+P. Belhumeur. Moving gradients: a path-based method for
+plausible image interpolation. ACM TOG, 28(3):42, 2009. 2
+[18] S. Meyer, O. Wang, H. Zimmer, M. Grosse, and A. Sorkine-
+Hornung. Phase-based frame interpolation for video.
+In
+CVPR, 2015. 2, 7, 8, 11, 12
+[19] S. Niklaus, L. Mai, and F. Liu. Video frame interpolation via
+adaptive convolution. In CVPR, 2017. 1, 2, 3, 6
+[20] S. Niklaus, L. Mai, and F. Liu. Video frame interpolation via
+adaptive separable convolution. In ICCV, 2017. 1, 2, 3, 5, 6,
+7, 8, 11, 12
+[21] V. Patraucean, A. Handa, and R. Cipolla. Spatio-temporal
+video autoencoder with differentiable memory.
+In ICLR,
+workshop, 2016. 3
+[22] A. Ranjan and M. J. Black. Optical ﬂow estimation using a
+spatial pyramid network. In CVPR, 2017. 2
+[23] J. Revaud, P. Weinzaepfel, Z. Harchaoui, and C. Schmid.
+EpicFlow: Edge-Preserving Interpolation of Correspon-
+dences for Optical Flow. In CVPR, 2015. 2, 3, 8
+[24] C. Rhemann, C. Rother, J. Wang, M. Gelautz, P. Kohli, and
+P. Rott. A perceptually motivated online benchmark for im-
+age matting. In CVPR, 2009. 4
+[25] O. Ronneberger, P. Fischer, and T. Brox. U-net: Convolu-
+tional networks for biomedical image segmentation. In MIC-
+CAI, 2015. 5
+[26] S. Roth and M. J. Black. On the spatial statistics of optical
+ﬂow. IJCV, 74(1):33–50, 2007. 2
+[27] K. Simonyan and A. Zisserman.
+Very deep convolu-
+tional networks for large-scale image recognition. CoRR,
+abs/1409.1556, 2014. 5
+[28] K. Soomro, A. R. Zamir, and M. Shah. Ucf101: A dataset
+of 101 human action classes from videos in the wild. CRCV-
+TR-12-01, 2012. 2, 6
+[29] S. Su, M. Delbracio, J. Wang, G. Sapiro, W. Heidrich, and
+O. Wang. Deep video deblurring. In CVPR, 2017. 2, 5, 6, 9
+[30] D. Sun, S. Roth, J. P. Lewis, and M. J. Black. Learning
+optical ﬂow. In ECCV, 2008. 2
+[31] D. Sun, X. Yang, M.-Y. Liu, and J. Kautz. Pwc-net: Cnns
+for optical ﬂow using pyramid, warping, and cost volume. In
+CVPR, 2018. 2
+[32] R. Szeliski. Prediction error as a quality metric for motion
+and stereo. In ICCV, 1999. 2
+[33] T. Wang, J. Zhu, N. K. Kalantari, A. A. Efros, and R. Ra-
+mamoorthi. Light ﬁeld video capture using a learning-based
+hybrid imaging system. ACM TOG, 36(4). 2
+Figure 9: Illustration of the architecture of our ﬂow computation and ﬂow interpolation CNNs.
+[34] P. Weinzaepfel, J. Revaud, Z. Harchaoui, and C. Schmid.
+Deepﬂow: Large displacement optical ﬂow with deep match-
+ing. In ICCV, 2013. 7
+[35] J. Wulff, L. Sevilla-Lara, and M. J. Black. Optical ﬂow in
+mostly rigid scenes. In CVPR, 2017. 2
+[36] J. Xu, R. Ranftl, and V. Koltun. Accurate optical ﬂow via
+direct cost volume processing. In CVPR, 2017. 2
+[37] L. Xu, J. Jia, and Y. Matsushita. Motion detail preserving
+optical ﬂow estimation. TPAMI, 34(9):1744–1757, 2012. 7
+[38] J. J. Yu, A. W. Harley, and K. G. Derpanis. Back to basics:
+Unsupervised learning of optical ﬂow via brightness con-
+stancy and motion smoothness. In ECCV, workshop, 2016.
+3
+[39] F. Zhang, S. Xu, and X. Zhang. High accuracy correspon-
+dence ﬁeld estimation via mst based patch matching. 2015.
+7
+[40] T. Zhou, S. Tulsiani, W. Sun, J. Malik, and A. A. Efros. View
+synthesis by appearance ﬂow. In ECCV, 2016. 3
+Figure 10: Visual comparisons on the UCF101 dataset. (a) actual in-between frame, interpolation results from (b) Phase-
+Based [18], (c) FlowNet2 [7, 9], (d) SepConv [20], (e) DVF [15], and (f) Ours.
+‘’
+Figure 11: Visual comparisons on the UCF101 dataset. (a) actual in-between frame, interpolation results from (b) Phase-
+Based [18], (c) FlowNet2 [7, 9], (d) SepConv [20], (e) DVF [15], and (f) Ours.

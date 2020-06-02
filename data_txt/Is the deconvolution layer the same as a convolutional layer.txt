@@ -1,0 +1,1199 @@
+Is   the   dec onvolution   la yer   the   sa me   a s   a    c onvolutiona l   la yer?  
+A   n
+o te   o
+n    Real­Time   Sin gle   Image   an d   Video    Sup er­Reso
+lutio
+n    Usin g   an    Efficien t   Sub­Pixel 
+Co
+n vo
+lutio
+n al   Neural   Netwo rk . 
+Wen zhe   Shi,   Jo se   Caballero ,   Lucas   Theis,   Feren c   Huszar,   An drew   Aitken ,  
+Alykhan    Tejan
+i,   Jo han
+n es   To tz,   Christian    Ledig,   Zehan    Wan g 
+Twitter,   In c. 1
+In
+o urCVPR 2
+0
+1
+6
+p ap er[
+1
+] ,we p ro
+p
+o sed a n
+o vel
+n etwo rk architecture to
+p erfo rm sin gle image
+sup er­reso
+lutio
+n
+( SR) .Mo stexistin g co
+n vo
+lutio
+n al n eural n etwo rk ( CNN) based sup er­reso
+lutio
+n metho ds
+[
+1
+0 ,1
+1
+]
+firstup samp
+le the image usin g abicubic in terp
+o
+latio
+n ,then ap
+p
+ly aco
+n vo
+lutio
+n al n etwo rk.We will
+referto these typ eso f n etwo rksashigh­reso
+lutio
+n
+( HR)
+n etwo rksbecause the imagesare up samp
+led
+first.   In stead,   we   feed   the   lo w­reso
+lutio
+n    ( LR)    in
+p ut   directly   to    a   sub­p
+ixel   CNN   as   sho wn    in    Fig.1  :  
+Figure   1 :   An    illustratio
+n    o f   the   ESCPN   framewo rk   where    r    den
+o tes   the   up scalin g   ratio .  
+r × r  
+Let den
+  r  
+o te the up scalin g ratio ­e.g if the in
+p utLR image is
+then the o utp utHR image will be
+  r2  
+.We then
+o utp ut n umbero f chan
+n elsin stead o f o
+n e high­reso
+lutio
+n
+( HR)
+image an d use p erio dic
+shufflin g to recreate the HR image.The exactdetailsabo utho wo urefficien tsub­p
+ixel co
+n vo
+lutio
+n al layer
+wo rks   can    be   fo un d   in    the   p ap er.   We   will   refer   to    o ur   n etwo rk   as   a   LR   n etwo rk.  
+1 × 1  
+In thisn
+o te,we wan tto
+fo cuso
+n two asp ectsrelated to two
+q uestio
+n smo stp eo
+p
+le asked usatCVPR
+when they sawthisn etwo rk.Firstly,ho w can
+  r2  
+chan
+n elsmagically beco me aHR image? An d seco
+n dly,
+why are co
+n vo
+lutio
+n
+in LR sp ace abettercho
+ice? These are actually the key q uestio
+n swe tried to an swer
+in the p ap er,butwe were n
+o table to go
+in to asmuch dep th an d clarity aswe wo uld’ve liked given the
+p age limit.To betteran swerthese q uestio
+n s,we firstdiscussthe relatio
+n ship sbetween the deco
+n vo
+lutio
+n
+layerin the fo rm o f the tran sp
+o sed co
+n vo
+lutio
+n
+layer,the sub­p
+ixel co
+n vo
+lutio
+n al layeran d o urefficien t
+sub­p
+ixel co
+n vo
+lutio
+n al layer,which we’ll go thro ugh in Sec.1 an d Sec.2 .We will referto
+o urefficien t
+sub­p
+ixel co
+n vo
+lutio
+n al
+layerasa co
+n vo
+lutio
+n al
+layerin LR sp ace to distin guish itfro m the co mmo
+n
+sub­p
+ixel co
+n vo
+lutio
+n al layer[
+5
+] .We will then sho wthatfo rafixed co mp utatio
+n al budgetan d co mp
+lexity,
+an etwo rk with co
+n vo
+lutio
+n sexclusively in LR sp ace hasmo re rep resen tatio
+n
+p
+o weratthe same sp eed
+than    a   n etwo rk   that   first   up samp
+les   the   in
+p ut   in    HR   sp ace. 
+1   { wshi,   jcaballero ,   ltheis,   fhuszar,   aaitken ,   atejan
+i,   jto tz,   cledig,   zwan g} @twitter.co m 
+Sectio
+n    1 :   Tran sp
+o sed   co
+n vo lutio
+n    an d   sub­p ixel   co
+n vo lutio
+n al   layers 
+Firstwe n eed to examin e the deco
+n vo
+lutio
+n
+layer.The deco
+refer,firstap
+p earsin Zeiler’sp ap erasp arto f the deco
+n vo
+lutio
+n ame.   The   term   deco
+n vo
+lutio
+n    layer   is   used   in    his   later   wo rk   [
+3
+n vo
+lutio
+n
+layer,to which p eo
+p
+le co mmo
+n
+ly
+n al n etwo rk [
+2
+] butdo esn
+o thave asp ecific
+]    an d   then    imp
+lemen ted   in    caffe. 2
+Afterthe successo f the n etwo rk visualizatio
+n
+p ap er[
+4
+]
+itbecame widely ado
+p ted an d isn
+o wco mmo
+n
+ly
+used in the co
+n texto f seman tic segmen tatio
+n
+[
+5
+] ,flo w estimatio
+n
+[
+6
+] an d gen erative mo delin g [
+7
+] .Italso
+hasman y n amesin cludin g ( butn
+o tlimited to
+) sub­p
+ixel o rfractio
+n al co
+n vo
+lutio
+n al layer[
+7
+] ,tran sp
+o sed
+co
+n vo
+lutio
+n al layer[
+8 ,9
+] ,in verse,up
+o rbackward co
+n vo
+lutio
+n al layer[
+5 ,6
+] .To exp
+lain the relatio
+n ship s
+between these differen tn ames,let’sstartwith asimp
+le co
+n vo
+lutio
+n with stride 2
+in
+1 D assho wn
+in Fig.2 ,
+which   is   in sp
+ired   by   [
+8 ,9
+] : 
+3
+Figure   2 :   Co
+n vo
+lutio
+n    with   stride   2    in    1 D 
+Fig.2
+illustrates1 D p added co
+n vo
+lutio
+n
+o f a1 D sign al by afilter to
+  x 
+  f  
+o btain a1 D sign al .The sign al
+  y 
+  x 
+iso f size 8 ,the filter iso f size 4 an d the sign al
+  f  
+  y 
+iso f size 5 .The grey areasin rep resen tp addin g
+  x 
+with zero s.The grey areasin
+  f  
+rep resen tmultip
+licatio
+n with zero s.The valueso f thatco
+  x 
+n tribute to
+values   o f       are   sho wn    with   arro ws.   We   n
+o te   that   a   co
+n vo
+lutio
+n    with   stride   2    is   a   do wn samp
+lin g   o
+p eratio
+n .
+y
+No w,let’sexamin e acro
+p
+bo th   in    1 D: 
+p ed tran sp
+o sed co
+n vo
+lutio
+n with stride 2 an d sub­p
+ixel co
+n vo
+lutio
+n with stride ½
+2    http://caffe.berkeleyvision.org/doxygen/classcaffe_1_1DeconvolutionLayer.html 
+3   If   the   layer   remembers   the   max   p
+o
+o
+lin g   in dices,   an d   use   the   in dices   in    the   un
+p
+o
+o
+lin g   stage   as   in    the 
+o rigin al   p ap er   [
+2
+] ,   then    this   sp ecific   fo rm   o f   sub­p
+ixel   co
+n vo
+lutio
+n al   layer   ( deco
+n vo
+lutio
+n    layer   with 
+memo rial   un
+p
+o
+o
+lin g)    is   distin ct   fro m   the   tran sp
+o sed   co
+n vo
+lutio
+n al   layer.   The   rest   o f   this   n
+o te   assumes   that 
+we   do    n
+o t   memo rize   the   p
+o
+o
+lin g   in dices. 
+( a)
+( b)  
+Figure   3 :   ( a)    Tran sp
+o sed   co
+n vo
+lutio
+n    with   stride   2    an d   ( b)    sub­p
+ixel   co
+n vo
+lutio
+n    with   stride   ½      in    1 D 
+Fig.3
+illustrates1 D cro
+p
+p ed tran sp
+o sed co
+n vo
+lutio
+n an d 1 D sub­p
+ixel co
+n vo
+lutio
+n .Bo th are up samp
+lin g
+o
+p eratio
+n s.In thiscase, iso f size 5 , iso f size 4 an d
+  x 
+  f  
+  y 
+iso f size 8 .The grey areasin rep resen t
+  y 
+cro
+p
+p
+in g.The tran sp
+o sed co
+n vo
+lutio
+n go titsn ame because the matrix fo rthe o
+p eratio
+n
+in the middle isa
+tran sp
+o sed versio
+n
+o f the matrix in Fig.2 .Itisalso called backward co
+n vo
+lutio
+n sin ce itisthe backward
+p ro
+p agatio
+n
+o f a co
+n vo
+lutio
+n al
+layer.Itisn
+o ticeable thatthe p added co
+n vo
+lutio
+n beco mesacro
+p
+p ed
+co
+n vo
+lutio
+n because o f the tran sp
+o sed matrix,whereasthe sub­p
+ixel co
+n vo
+lutio
+n go titsn ame fro m the
+imagin ary sub­p
+ixelswith fractio
+n al in dicesfilled in between the o rigin al p
+ixels.We can see thatthe o
+n
+ly
+differen ce between these two
+o
+p eratio
+n sisthatthe in diceso f the weightsused when co
+n tributin g to
+  y 
+fro m are differen t.If we reverse the elemen tin diceso f filter in the sub­p
+  x 
+  f  
+ixel co
+n vo
+lutio
+n then this
+layerwill be iden tical to atran sp
+o sed co
+n vo
+lutio
+n
+layer.In
+o therwo rds,bo th o
+p eratio
+n scan achieve the
+same   result   if   the   filter   is   learn ed.  
+Sectio
+n    2 :   D eco
+n vo lutio
+n    layer   vs   C
+o
+n vo lutio
+n    in    LR 
+In thisn
+o te,we also wan tto demo
+n strate thatasimp
+le co
+n vo
+lutio
+n al layerwith kern el size
+­e.g.(
+o utp utchan
+n els,in
+p utchan
+n els,kern el width,kern el height)
+in LR sp ace is iden tical to a
+deco
+n vo
+lutio
+n
+layerwith kern el size
+where k isap
+o sitive in teger.We will do thisin
+2 D so
+the readercan relate itto Fig.1 .To avo
+id o verly co mp
+licated figures,let’sstartwith asimp
+le sub­p
+ixel
+p added co
+n vo
+lutio
+n al
+layerwith a
+in
+p utan d a
+kern el,an d assume an up scalin g
+facto r   o f   2    leadin g   to       a   
+   o utp ut:
+  o,i ,k ,k )  
+(
+r  
+  1,1,4,4)
+(
+  1,4,4)
+(
+(
+1,8,8)
+r  
+*
+  o ,i ,k,k)  
+(
+r2  
+*
+*
+Figure   4 :   Step    1    o f   sub­p
+ixel   co
+n vo
+lutio
+n :   create   sub­p
+ixel   image   fro m   LR   image 
+Asin the 1 D case,we create asub­p
+ixel image with fractio
+n al in dicesfro m the o rigin al in
+p ut,where the
+white   p
+ixels   are   the   o rigin al   LR   p
+ixels   an d   the   grey   o
+n es   are   the   zero    p added   imagin ary   sub­p
+ixels.  
+Figure   5 :   Step    2    o f   sub­p
+ixel   co
+n vo
+lutio
+n :   co
+n vo
+lutio
+n    in    sub­p
+ixel   sp ace 
+  1,1,4,4)
+(
+If a
+kern el
+isco
+n vo
+lved with the sub­p
+ixels,the firstseto f weightsthatare activated by
+n
+o
+n ­zero
+p
+ixelsare the p urp
+le o
+n es.Then we mo ve o
+n e sub­p
+ixel to the rightin the sub­p
+ixel image an d
+the   blue   weights   are   activated.   Same   go es   fo r   the   green    an d   the   red   o
+n es.  
+Figure   6 :   Full   view   o f   the   sub­p
+ixel   co
+n vo
+lutio
+n  
+Fin ally,the o utp utHR image hasthe same dimen sio
+n asthe
+sub­p
+ixel
+image,we co
+lo rco de itto sho w which seto f weights
+co
+n tributed   to    the   p
+ixel. 
+We n
+o tice thatthe differen tsetso f weightsin the
+kern el
+are activated in dep en den tly fro m each o ther.So we can easily
+break them in to
+kern elsassho wn
+in the figure o
+n the right.Thiso
+p eratio
+because   each   set   o f   the   weights   are   in dep en den t   fro m   each   o ther   durin g   the   co
+n vo
+lutio
+n . 
+  4,1,2,2)
+(
+  1,1,4,4)
+(
+n
+isin vertible
+In
+o urp ap er,in stead o f co
+n vo
+lvin g the
+kern el with the un
+the   
+   kern el   with   the   LR   in
+p ut   directly   as   illustrated   by   the   fo
+4,1,2,2)
+(
+  1,1,4,4)
+(
+p
+o
+o
+led sub­p
+ixel image,we co
+llo win g   figure:
+n vo
+lve
+Figure   7 :   Full   view   o f   the   p ro
+p
+o sed   sub­p
+ixel   co
+n vo
+lutio
+n    usin g   just   co
+n vo
+lutio
+n  
+  4,4,4)
+(
+When we getthe
+o utp ut,we can simp
+ly use the p erio dic shufflin g o
+p eratio
+n men tio
+n ed in
+o ur
+p ap erto reshap e the o utp utchan
+n elsto the HR o utp ut.The resultisthen
+iden tical to the HR o utp utin
+Fig.6 .Itgen eralizesto an y kern el shap e o f dimen sio
+n
+an d rescale ratio .We will leave thisas
+  r  
+an    exercise   to    the   reader. 
+  o,,,)
+(
+i kk 
+Here’sthe train ed lastco
+n vo
+lutio
+n al layerkern elso f size
+fro m o urp ap ero
+recreated deco
+n vo
+lutio
+n
+layerkern elso f
+o
+n bo tto m usin g the in verse o
+p eratio
+the   right: 
+  1,32,9,9)
+(
+  9,32,3,3)
+(
+n to
+p an d the
+illustrated o
+n
+n
+ ✳ x
+y1 = f 1
+If we ap
+p
+ly the to
+p co
+n vo
+lutio
+n al layerkern elsto an y 3
+2 chan
+n el in
+p utsfo
+llo wed by p erio dic shufflin g we
+will getthe same resultasif we ap
+p
+ly the bo tto m deco
+n vo
+lutio
+n
+layerwith the
+kern els.Go
+in g
+back to
+o ur1 D case in Fig.3 ,we simp
+ly rep
+lace
+with
+an d
+,p ro duce
+an d
+where
+  ✳  
+den
+o tesco
+n vo
+lutio
+n ,then co mbin e
+  y1  
+an d
+  y2  
+to create .The
+  y 
+eq uivalen ce between co
+n vo
+lutio
+n
+in LR sp ace an d sub­p
+ixel co
+n vo
+lutio
+n discussed abo ve ap
+p
+liesto
+  f  
+with size eq ualsto
+.Butreadermighthasn
+o ticed thatfo rsub­p
+ixel co
+n vo
+lutio
+n , can be o f an y size.
+  f  
+Ho wever,co
+n vo
+lutio
+n
+in LR sp ace actually also wo rksfo r with size n
+  f  
+o teq ualsto
+.Fo rexamp
+le,if
+then we will simp
+ly have
+an d
+,p ro duce
+,then
+   an d   
+   to    create    .
+  1,32,9,9)
+(
+f 1 =  
+( 2,)
+4  
+f 2 =  
+( 1,)
+3  
+y2 = f 2
+r  
+r  
+y2 = f 2
+f =  
+( 1,,,)
+2 3 4  
+f 2 =  
+( 1,)
+3  
+f =  
+( 1,,)
+2 3  
+f 1 =  
+( 2)
+co mbin e   
+y1 = f 1
+ ✳ x
+ ✳ x
+ ✳ x
+ k
+ k
+an d
+y 
+*
+*
+y1
+y2
+Sectio
+n    3 :   What   do es   this   mean ? 
+d  
+In co
+n clusio
+n ,the deco
+n vo
+lutio
+n
+layeristhe same asthe co
+n vo
+lutio
+n
+in LR with
+  rd  
+chan
+n el o utp utwhere
+  r2  
+isthe sp atial dimen sio
+n
+o f the data.Thismean sthatan etwo rk can
+learn to use
+chan
+n elso f LR
+image/feature map sto rep resen to
+n e HR image/feature map sif itisen co uraged to do so .An d the
+  r2  
+o
+p eratio
+n used to create the
+chan
+n elsisjustsimp
+le co
+n vo
+lutio
+n swhich isn
+o differen tfro m the
+o
+p eratio
+n    used   to    create   the   
+feature   map s   befo re   it.
+nl−1
+Here co mesthe additio
+n al in sightsto the p ro blem we have gain ed durin g lastyearafterwe fin
+ished the
+p ap er,if we n
+o w fo cuso
+n the co
+n vo
+lutio
+n al layersbefo re the lastco
+n vo
+lutio
+n ,which has feature map s,
+  n  
+we n
+o w kn
+o w thatwith an up samp
+lin g facto ro f 2
+itcan
+learn to rep resen t feature map sin LR sp ace
+  n  
+thatare eq uivalen tto
+  4
+n  
+feature map sin HR sp ace.No w imagin e two
+n etwo rkswith the same run ­time
+sp eed.On e has
+feature map sall
+in LR sp ace ( LR n etwo rk) asin
+[
+1
+] an d an
+o thern etwo rk
+up samp
+lesbefo re co
+n vo
+lutio
+n asin
+[
+1
+0
+] an d has
+  4
+feature map sall in HR sp ace ( HR n etwo rk) .The
+rep resen tatio
+n
+p
+o wero f the LR n etwo rk isactually greaterthan the HR n etwo rk atthe same run ­time
+sp eed.  
+n = 3  
+2
+n = 8  
+O
+( 8 
+× 8 × 6 × 6 × W × H
+To be mo re sp ecific,fo rthe LR n etwo rk,the co mp
+lexity o f the n etwo rk
+H  
+isthe
+same asthe HR n etwo rk
+where an d
+den
+o te width an d heighto f the
+H  
+images.The in fo rmatio
+n retain ed in the feature map sare also the same between the LR
+  l 
+an d the HR
+n etwo rk,where
+den
+o testhe n umbero f layers.The recep tive fieldso f each
+activatio
+n
+iseq uivalen tin the o rigin al
+in
+p utLR sp ace.Ho wever,the n umbero f p arametero f the LR
+n etwo rk
+islargerthan thatfo rthe HR n etwo rk
+.Thusthe n etwo rk
+with co
+n vo
+lutio
+n sexclusively in LR hasmo re rep resen tatio
+n
+p
+o werthan an etwo rk thatup samp
+lesthe
+in
+p ut   at   the   same   sp eed   . 
+)  
+  l 32
+( ×   × 3 × 3 × 3  
+2
+)  
+× 3 × 3 × 3 × 2
+× 2
+( × 3 × 2
+( ×   × 8 × 6 × 6  
+)  
+  l
+( × 8 × W × H
+  W   H
+  l 2
+  l 8
+( 32
+× 2
+)  
+)  
+)  
+2
+W
+W
+O
+Given the abo ve argumen t,we n
+o wthin k thatfo rsup er­reso
+lutio
+n
+p ro blems,an exp
+licitup samp
+lin g usin g
+abicubic o ra deco
+n vo
+lutio
+n
+layerisn ’treally n ecessary.Fo rexamp
+le,in dep en den tly develo
+p ed later
+wo rks   by   Do
+n g   [
+1
+2
+]    an d   Jo hn so
+n    [
+1
+3
+]    use   co
+n vo
+lutio
+n    in    LR   fo r   sup er   reso
+lutio
+n    an d   even    style   tran sfer.  
+Thisraisesmo re in terestin g q uestio
+n s.Isexp
+licitup samp
+lin g usin g bicubic in terp
+o
+latio
+n
+o rdeco
+n vo
+lutio
+n
+n ecessary in an y o therap
+p
+licatio
+n s? Can the n etwo rk learn when to up scale an d whatp ercen tage o f
+feature map sto up scale fro m usin g o
+n
+ly co
+n vo
+lutio
+n s? Whathap
+p en swhen resNetisco mbin ed with
+man y layerso f co
+n vo
+lutio
+n sfo rtaskswhich req uire up samp
+lin g,will the n etwo rk learn to co mbin e LR an d
+HR   features   auto matically?   We   will   leave   the   readers   to    p
+o
+n der   these   mo re   in terestin g   q uestio
+n s. 
+Referen ces: 
+n etwo rks." Co mp uterV isio
+n an dPattern Reco gn itio
+n
+[
+1
+] Shi,Wen zhe,etal."Real­Time Sin gle Image an d Video Sup er­Reso
+lutio
+n Usin g an Efficien tSub­Pixel
+Co
+n vo
+lutio
+n al Neural Netwo rk." Pro ceedin gso ftheIEEE Co
+n feren ceo
+n Co mp uterV isio
+n an dPattern
+Reco gn itio
+n  .   2
+0
+1
+6 . 
+[
+2
+] Zeiler,Matthew D.,etal."Deco
+n vo
+lutio
+n al
+( CV PR) ,   20 10    IEEE   Co
+n feren ce   o
+n  .   IEEE,   2
+0
+1
+0 . 
+[
+3
+] Zeiler,Matthew D.,Graham W.Taylo r,an d Ro bFergus."Adap tive deco
+n vo
+lutio
+n al n etwo rksfo rmid
+an d   high   level   feature   learn
+in g."    20 11   In tern atio
+n al   Co
+n feren ce   o
+n    Co mp uter   V isio
+n  .   IEEE,   2
+0
+1
+1 . 
+[
+4
+] Zeiler,Matthew D.,an d Ro b Fergus."Visualizin g an d un derstan din g co
+n vo
+lutio
+n al
+n etwo rks."
+Euro
+p ean    Co
+n feren ce   o
+n    Co mp uter   V isio
+n  .   Sp rin ger   In tern atio
+n al   Publishin g,   2
+0
+1
+4 . 
+[
+5
+] Lo
+n g,Jo
+n athan ,Evan Shelhamer,an d Trevo rDarrell."Fully co
+n vo
+lutio
+n al
+n etwo rksfo rseman tic
+segmen tatio
+n ."    Pro ceedin gs   o f   the   IEEE   Co
+n feren ce   o
+n    Co mp uter   V isio
+n    an d   Pattern    Reco gn itio
+n  .   2
+0
+1
+5 . 
+[
+6
+] Do so vitskiy,Alexey,etal."Flo wn et:Learn
+in g o
+p tical flo w with co
+n vo
+lutio
+n al n etwo rks." 20 15IEEE
+In tern atio
+n al   Co
+n feren ce   o
+n    Co mp uter   V isio
+n    ( ICCV
+)  .   IEEE,   2
+0
+1
+5 . 
+[
+7
+] Radfo rd,Alec,Luke Metz,an d So umith Chin tala."Un sup ervised rep resen tatio
+n
+learn
+in g with deep
+co
+n vo
+lutio
+n al   gen erative   adversarial   n etwo rks."    arX iv   p rep rin t   arX iv:1511.
+0 6434    (
+2
+0
+1
+5
+) . 
+[
+8
+] Dumo ulin ,Vin cen t,an d Fran cesco Visin ."A guide to co
+n vo
+lutio
+n arithmetic fo rdeep
+p rep rin t   arX iv:160 3.
+0 7285    (
+2
+0
+1
+6
+) . 
+[
+9
+] Vedaldi, An drea,an d Karel Len c. "Matco
+n vn et: Co
+n vo
+lutio
+n al
+n eural
+n etwo rks fo rmatlab."
+Pro ceedin gs   o f   the   23rd   ACM   in tern atio
+n al   co
+n feren ce   o
+n    Multimedia .   ACM,   2
+0
+1
+5 . 
+[
+1
+0
+] Do
+n g,Chao ,etal."Learn
+in g adeep co
+n vo
+lutio
+n al n etwo rk fo rimage sup er­reso
+Co
+n feren ce   o
+n    Co mp uter   V isio
+n  .   Sp rin ger   In tern atio
+n al   Publishin g,   2
+0
+1
+4 . 
+[
+1
+1
+] Kim,Jiwo
+n ,Jun g Kwo
+n Lee,an d Kyo un g Mu Lee."Deep
+ly­Recursive Co
+Image   Sup er­Reso
+lutio
+n ."    arX iv   p rep rin t   arX iv:1511.
+0 4491    (
+2
+0
+1
+5
+) . 
+[
+1
+2
+] Do
+n g,Chao ,Chen Chan ge Lo y,an d Xiao
+o uTan g."Acceleratin g the sup er­reso
+lutio
+n co
+n vo
+lutio
+n eural   n etwo rk."    Euro
+p ean    Co
+n feren ce   o
+n    Co mp uter   V isio
+n  .   Sp rin ger   In tern atio
+n al   Publishin g,   2
+0
+1
+6 . 
+[
+1
+3
+] Jo hn so
+n ,Justin ,Alexan dre Alahi,an d Li Fei­Fei."Percep tual lo ssesfo rreal­time style tran sferan d
+sup er­reso
+lutio
+n ."    arX iv   p rep rin t   arX iv:160 3.
+0 8155 (
+2
+0
+1
+6
+) . 
+learn
+in g." arX iv
+lutio
+n ." Euro
+p ean
+n al
+n vo
+lutio
+n al Netwo rk fo r

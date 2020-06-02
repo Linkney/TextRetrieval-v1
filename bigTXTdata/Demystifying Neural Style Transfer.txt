@@ -1,0 +1,904 @@
+Demystifying Neural Style Transfer
+Yanghao Li†
+Naiyan Wang‡
+Jiaying Liu† ∗
+Xiaodi Hou‡
+† Institute of Computer Science and Technology, Peking University
+‡ TuSimple
+lyttonhao@pku.edu.cn winsty@gmail.com liujiaying@pku.edu.cn
+xiaodi.hou@gmail.com
+7
+1
+0
+2
+l
+u
+J
+1
+]
+V
+C
+.
+s
+c
+[
+2
+v
+6
+3
+0
+1
+0
+.
+1
+0
+7
+1
+:
+v
+i
+X
+r
+a
+Abstract
+Neural Style Transfer [Gatys et al., 2016] has re-
+cently demonstrated very exciting results which
+catches eyes in both academia and industry. De-
+spite the amazing results, the principle of neural
+style transfer, especially why the Gram matrices
+could represent style remains unclear. In this pa-
+per, we propose a novel interpretation of neural
+style transfer by treating it as a domain adapta-
+tion problem. Speciﬁcally, we theoretically show
+that matching the Gram matrices of feature maps
+is equivalent to minimize the Maximum Mean Dis-
+crepancy (MMD) with the second order polynomial
+kernel. Thus, we argue that the essence of neu-
+ral style transfer is to match the feature distribu-
+tions between the style images and the generated
+images. To further support our standpoint, we ex-
+periment with several other distribution alignment
+methods, and achieve appealing results. We believe
+this novel interpretation connects these two impor-
+tant research ﬁelds, and could enlighten future re-
+searches.
+1 Introduction
+Transferring the style from one image to another image
+is an interesting yet difﬁcult problem. There have been
+many efforts to develop efﬁcient methods for automatic style
+transfer [Hertzmann et al., 2001; Efros and Freeman, 2001;
+Efros and Leung, 1999; Shih et al., 2014; Kwatra et al.,
+2005]. Recently, Gatys et al. proposed a seminal work [Gatys
+et al., 2016]:
+It captures the style of artistic images and
+transfer it to other images using Convolutional Neural Net-
+works (CNN). This work formulated the problem as ﬁnd-
+ing an image that matching both the content and style statis-
+tics based on the neural activations of each layer in CNN. It
+achieved impressive results and several follow-up works im-
+proved upon this innovative approaches [Johnson et al., 2016;
+Ulyanov et al., 2016; Ruder et al., 2016; Ledig et al., 2016].
+Despite the fact that this work has drawn lots of attention, the
+fundamental element of style representation: the Gram ma-
+trix in [Gatys et al., 2016] is not fully explained. The reason
+∗Corresponding author
+why Gram matrix can represent artistic style still remains a
+mystery.
+In this paper, we propose a novel interpretation of neu-
+ral style transfer by casting it as a special domain adapta-
+tion [Beijbom, 2012; Patel et al., 2015] problem. We theo-
+retically prove that matching the Gram matrices of the neural
+activations can be seen as minimizing a speciﬁc Maximum
+Mean Discrepancy (MMD) [Gretton et al., 2012a]. This re-
+veals that neural style transfer is intrinsically a process of dis-
+tribution alignment of the neural activations between images.
+Based on this illuminating analysis, we also experiment with
+other distribution alignment methods, including MMD with
+different kernels and a simpliﬁed moment matching method.
+These methods achieve diverse but all reasonable style trans-
+fer results. Speciﬁcally, a transfer method by MMD with lin-
+ear kernel achieves comparable visual results yet with a lower
+complexity. Thus, the second order interaction in Gram ma-
+trix is not a must for style transfer. Our interpretation pro-
+vides a promising direction to design style transfer methods
+with different visual results. To summarize, our contributions
+are shown as follows:
+1. First, we demonstrate that matching Gram matrices in
+neural style transfer [Gatys et al., 2016] can be reformu-
+lated as minimizing MMD with the second order poly-
+nomial kernel.
+2. Second, we extend the original neural style transfer with
+different distribution alignment methods based on our
+novel interpretation.
+2 Related Work
+In this section, we brieﬂy review some closely related works
+and the key concept MMD in our interpretation.
+Style Transfer Style transfer is an active topic in both
+academia and industry. Traditional methods mainly focus on
+the non-parametric patch-based texture synthesis and transfer,
+which resamples pixels or patches from the original source
+texture images [Hertzmann et al., 2001; Efros and Freeman,
+2001; Efros and Leung, 1999; Liang et al., 2001]. Different
+methods were proposed to improve the quality of the patch-
+based synthesis and constrain the structure of the target im-
+age. For example, the image quilting algorithm based on
+dynamic programming was proposed to ﬁnd optimal texture
+boundaries in [Efros and Freeman, 2001]. A Markov Random
+Field (MRF) was exploited to preserve global texture struc-
+tures in [Frigo et al., 2016]. However, these non-parametric
+methods suffer from a fundamental limitation that they only
+use the low-level features of the images for transfer.
+Recently, neural style transfer [Gatys et al., 2016] has
+demonstrated remarkable results for image stylization.
+It
+fully takes the advantage of the powerful representation of
+Deep Convolutional Neural Networks (CNN). This method
+used Gram matrices of the neural activations from different
+layers of a CNN to represent the artistic style of a image.
+Then it used an iterative optimization method to generate a
+new image from white noise by matching the neural activa-
+tions with the content image and the Gram matrices with the
+style image. This novel technique attracts many follow-up
+works for different aspects of improvements and applications.
+To speed up the iterative optimization process in [Gatys et al.,
+2016], Johnson et al. [Johnson et al., 2016] and Ulyanov et
+al. [Ulyanov et al., 2016] trained a feed-forward generative
+network for fast neural style transfer. To improve the trans-
+fer results in [Gatys et al., 2016], different complementary
+schemes are proposed, including spatial constraints [Selim
+et al., 2016], semantic guidance [Champandard, 2016] and
+Markov Random Field (MRF) prior [Li and Wand, 2016].
+There are also some extension works to apply neural style
+transfer to other applications. Ruder et al. [Ruder et al.,
+2016] incorporated temporal consistence terms by penaliz-
+ing deviations between frames for video style transfer. Selim
+et al. [Selim et al., 2016] proposed novel spatial constraints
+through gain map for portrait painting transfer. Although
+these methods further improve over the original neural style
+transfer, they all ignore the fundamental question in neural
+style transfer: Why could the Gram matrices represent the
+artistic style? This vagueness of the understanding limits the
+further research on the neural style transfer.
+Domain Adaptation Domain adaptation belongs to the
+area of transfer learning [Pan and Yang, 2010].
+It aims to
+transfer the model that is learned on the source domain to
+the unlabeled target domain. The key component of domain
+adaptation is to measure and minimize the difference between
+source and target distributions. The most common discrep-
+ancy metric is Maximum Mean Discrepancy (MMD) [Gret-
+ton et al., 2012a], which measure the difference of sample
+mean in a Reproducing Kernel Hilbert Space. It is a popu-
+lar choice in domain adaptation works [Tzeng et al., 2014;
+Long et al., 2015; Long et al., 2016]. Besides MMD, Sun
+et al. [Sun et al., 2016] aligned the second order statistics by
+whitening the data in source domain and then re-correlating
+to the target domain. In [Li et al., 2017], Li et al. proposed a
+parameter-free deep adaptation method by simply modulating
+the statistics in all Batch Normalization (BN) layers.
+i=1 and Y = {yj }m
+Maximum Mean Discrepancy Suppose there are two sets
+of samples X = {xi }n
+j=1 where xi and yj
+are generated from distributions p and q , respectively. Maxi-
+mum Mean Discrepancy (MMD) is a popular test statistic for
+the two-sample testing problem, where acceptance or rejec-
+tion decisions are made for a null hypothesis p = q [Gretton
+et al., 2012a]. Since the population MMD vanishes if and
+only p = q , the MMD statistic can be used to measure the
+difference between two distributions. Speciﬁcally, we calcu-
+lates MMD deﬁned by the difference between the mean em-
+bedding on the two sets of samples. Formally, the squared
+MMD is deﬁned as:
+MMD2 [X, Y ]
+= (cid:107)Ex [φ(x)] − Ey [φ(y)](cid:107)2
+= (cid:107) 1
+φ(xi ) − 1
+φ(yj )(cid:107)2
+n
+m
+m(cid:88)
+j=1
+n(cid:88)
+n(cid:88)
+i=1
+i=1
+=
+1
+n2
+− 2
+nm
+n(cid:88)
+n(cid:88)
+i(cid:48)=1
+m(cid:88)
+i=1
+j=1
+φ(xi )T φ(xi(cid:48) ) +
+φ(xi )T φ(yj ),
+m(cid:88)
+m(cid:88)
+j=1
+j (cid:48)=1
+(1)
+φ(yj )T φ(yj (cid:48) )
+1
+m2
+where φ(·) is the explicit feature mapping function of
+MMD. Applying the associated kernel function k(x, y) =
+(cid:104)φ(x), φ(y)(cid:105), the Eq. 1 can be expressed in the form of ker-
+nel:
+=
+1
+n2
+MMD2 [X, Y ]
+n(cid:88)
+i=1
+n(cid:88)
+n(cid:88)
+i(cid:48)=1
+m(cid:88)
+− 2
+nm
+i=1
+j=1
+k(xi , xi(cid:48) ) +
+k(xi , yj ).
+m(cid:88)
+m(cid:88)
+j=1
+j (cid:48)=1
+1
+m2
+k(yj , yj (cid:48) )
+(2)
+The kernel function k(·, ·) implicitly deﬁnes a mapping to a
+higher dimensional feature space.
+3 Understanding Neural Style Transfer
+In this section, we ﬁrst theoretically demonstrate that match-
+ing Gram matrices is equivalent to minimizing a speciﬁc form
+of MMD. Then based on this interpretation, we extend the
+original neural style transfer with different distribution align-
+ment methods.
+Before explaining our observation, we ﬁrst brieﬂy re-
+view the original neural style transfer approach [Gatys et al.,
+2016]. The goal of style transfer is to generate a stylized im-
+age x∗ given a content image xc and a reference style im-
+age xs . The feature maps of x∗ , xc and xs in the layer l of
+a CNN are denoted by Fl ∈ RNl×Ml , Pl ∈ RNl×Ml and
+Sl ∈ RNl×Ml respectively, where Nl is the number of the
+feature maps in the layer l and Ml is the height times the
+width of the feature map.
+In [Gatys et al., 2016], neural style transfer iteratively gen-
+erates x∗ by optimizing a content loss and a style loss:
+L = αLcontent + βLstyle ,
+(3)
+where α and β are the weights for content and style losses,
+Lcontent is deﬁned by the squared error between the feature
+maps of a speciﬁc layer l for x∗ and xc :
+Lcontent =
+1
+2
+ij − P l
+ij )2 ,
+(F l
+(4)
+Nl(cid:88)
+i=1
+Ml(cid:88)
+j=1
+and Lstyle is the sum of several style loss Ll
+style in different
+layers:
+Lstyle =
+wlLl
+style ,
+(5)
+(cid:88)
+l
+where wl is the weight of the loss in the layer l and Ll
+deﬁned by the squared error between the features correlations
+expressed by Gram matrices of x∗ and xs :
+style is
+Ll
+style =
+1
+4N 2
+(Gl
+ij − Al
+ij )2 ,
+(6)
+where the Gram matrix Gl ∈ RNl×Nl is the inner product
+between the vectorized feature maps of x∗ in layer l:
+Nl(cid:88)
+j=1
+Nl(cid:88)
+l M 2
+l
+i=1
+Ml(cid:88)
+k=1
+ij =
+Gl
+F l
+ik F l
+jk ,
+(7)
+and similarly Al is the Gram matrix corresponding to Sl .
+3.1 Reformulation of the Style Loss
+In this section, we reformulated the style loss Lstyle in Eq. 6.
+By expanding the Gram matrix in Eq. 6, we can get the for-
+mulation of Eq. 8, where f l·k and sl·k is the k-th column of Fl
+and Sl .
+By using the second order degree polynomial kernel
+k(x, y) = (xT y)2 , Eq. 8 can be represented as:
+where F l is the feature set of x∗ where each sample is a col-
+umn of Fl , and S l corresponds to the style image xs . In this
+way, the activations at each position of feature maps is con-
+sidered as an individual sample. Consequently, the style loss
+ignores the positions of the features, which is desired for style
+transfer. In conclusion, the above reformulations suggest two
+important ﬁndings:
+1. The style of a image can be intrinsically represented by
+feature distributions in different layers of a CNN.
+2. The style transfer can be seen as a distribution alignment
+process from the content image to the style image.
+3.2 Different Adaptation Methods for Neural Style
+Transfer
+Our interpretation reveals that neural style transfer can be
+seen as a problem of distribution alignment, which is also at
+the core in domain adaptation. If we consider the style of one
+image in a certain layer of CNN as a “domain”, style trans-
+fer can also be seen as a special domain adaptation problem.
+The specialty of this problem lies in that we treat the feature
+at each position of feature map as one individual data sam-
+ple, instead of that in traditional domain adaptation problem
+(cid:16)
+Ml(cid:88)
+k1=1
+Ml(cid:88)
+k2=1
+1
+4N 2
+l M 2
+l
+k(f l·k1
+) − 2k(f l·k1
++ k(sl·k1
+, sl·k2
+1
+MMD2 [F l , S l ],
+4N 2
+l
+, f l·k2
+)
+(cid:17)
+, sl·k2
+)
+Ll
+style =
+=
+(9)
+in which we treat each image as one data sample. (e.g. The
+feature map of the last convolutional layer in VGG-19 model
+is of size 14 × 14, then we have totally 196 samples in this
+“domain”.)
+Inspired by the studies of domain adaptation, we extend
+neural style transfer with different adaptation methods in this
+subsection.
+MMD with Different Kernel Functions As shown in
+Eq. 9, matching Gram matrices in neural style transfer can
+been seen as a MMD process with second order polynomial
+kernel. It is very natural to apply other kernel functions for
+MMD in style transfer. First, if using MMD statistics to mea-
+sure the style discrepancy, the style loss can be deﬁned as:
+MMD2 [F l , S l ],
+Ll
+1
+Z l
+style =
+Ml(cid:88)
+i=1
+1
+Z l
+k
+Ml(cid:88)
+k
+j=1
+=
+(cid:16)
+k(f l·i , f l·j ) + k(sl·i , sl·j ) − 2k(f l·i , sl·j )
+(cid:17)
+,
+(10)
+where Z l
+k is the normalization term corresponding to differ-
+ent scale of the feature map in the layer l and the choice of
+kernel function. Theoretically, different kernel function im-
+plicitly maps features to different higher dimensional space.
+Thus, we believe that different kernel functions should cap-
+ture different aspects of a style. We adopt the following three
+popular kernel functions in our experiments:
+(1) Linear kernel: k(x, y) = xT y;
+(3) Gaussian kernel: k(x, y) = exp (cid:0) − (cid:107)x−y(cid:107)2
+(2) Polynomial kernel: k(x, y) = (xT y + c)d ;
+For polynomial kernel, we only use the version with d = 2.
+Note that matching Gram matrices is equivalent to the poly-
+nomial kernel with c = 0 and d = 2. For the Gaussian ker-
+nel, we adopt the unbiased estimation of MMD [Gretton et
+al., 2012b], which samples Ml pairs in Eq. 10 and thus can
+be computed with linear complexity.
+(cid:1).
+2σ2
+2
+BN Statistics Matching In [Li et al., 2017], the authors
+found that the statistics (i.e. mean and variance) of Batch
+Normalization (BN) layers contains the traits of different do-
+mains. Inspired by this observation, they utilized separate BN
+statistics for different domain. This simple operation aligns
+the different domain distributions effectively. As a special
+domain adaptation problem, we believe that BN statistics of
+a certain layer can also represent the style. Thus, we con-
+struct another style loss by aligning the BN statistics (mean
+and standard deviation) of two feature maps between two im-
+ages:
+(cid:16)
+Nl(cid:88)
+i=1
+Ll
+style =
+1
+Nl
+(µi
+F l − µi
+S l )2 + (σ i
+S l )2(cid:17)
+F l − σ i
+,
+(11)
+where µi
+F l is the mean and standard deviation of the
+i-th feature channel among all the positions of the feature map
+F l and σ i
+(
+(
+F l
+(cid:16)
+Ml(cid:88)
+k=1
+Nl(cid:88)
+Nl(cid:88)
+Nl(cid:88)
+Nl(cid:88)
+Ml(cid:88)
+l M 2
+l
+i=1
+j=1
+ik F l
+Nl(cid:88)
+Nl(cid:88)
+Ml(cid:88)
+Ml(cid:88)
+i=1
+j=1
+k=1
+Ml(cid:88)
+Ml(cid:88)
+Nl(cid:88)
+Nl(cid:88)
+i=1
+j=1
+k1=1
+k2=1
+Ml(cid:88)
+Ml(cid:88)
+Nl(cid:88)
+k1=1
+k2=1
+i=1
+j=1
+k1=1
+Ml(cid:88)
+k2=1
+Ml(cid:88)
+i=1
+k1=1
+k2=1
+(cid:16)
+(cid:16)
+(f l·k1
+F l
+(
+T
+(F l
+Ll
+style =
+1
+4N 2
+=
+=
+=
+=
+=
+1
+4N 2
+l M 2
+l
+1
+4N 2
+l M 2
+l
+1
+4N 2
+l M 2
+l
+1
+4N 2
+l M 2
+l
+1
+4N 2
+l M 2
+l
+F l
+jk − Ml(cid:88)
+ik F l
+Ml(cid:88)
+k=1
+k=1
+S l
+ik S l
+jk )2
+jk )2 + (
+Ml(cid:88)
+k=1
+jk2 − 2F l
+ik1 F l
+jk1 F l
+ik2 F l
+jk2 + S l
+ik1 S l
+jk1 S l
+ik2 S l
+ik1 F l
+jk1 S l
+ik2 S l
+jk2 )
+Ml(cid:88)
+k=1
+jk )2 − 2(
+ik S l
+jk )
+ik F l
+ik S l
+jk )(
+F l
+S l
+S l
+(cid:17)
+(F l
+jk2 − 2F l
+ik1 F l
+jk1 F l
+ik2 F l
+Nl(cid:88)
+jk2 + S l
+ik1 S l
+jk1 S l
+ik2 S l
+Nl(cid:88)
+ik2 )2(cid:17)
+ik1 F l
+jk1 S l
+ik2 S l
+jk2 )
+ik1 S l
+i=1
+i=1
+ik1 S l
+ik1 F l
+ik2 )2 + (
+S l
+ik2 )2 − 2(
+F l
+sl·k2 )2(cid:17)
+,
+T
+f l·k2 )2 + (sl·k1
+T
+sl·k2 )2 − 2(f l·k1
+(8)
+in the layer l for image x∗ :
+µi
+F l =
+1
+Ml
+F l
+ij ,
+2
+σ i
+F l
+=
+1
+Ml
+Ml(cid:88)
+j=1
+Ml(cid:88)
+j=1
+(F l
+ij − µi
+F l )2 ,
+(12)
+S l and σ i
+and µi
+S l correspond to the style image xs .
+The aforementioned style loss functions are all differen-
+tiable and thus the style matching problem can be solved by
+back propagation iteratively.
+4 Results
+In this section, we brieﬂy introduce some implementation de-
+tails and present results by our extended neural style transfer
+methods. Furthermore, we also show the results of fusing dif-
+ferent neural style transfer methods, which combine different
+style losses. In the following, we refer the four extended style
+transfer methods introduced in Sec. 3.2 as linear, poly, Gaus-
+sian and BN, respectively. The images in the experiments
+are collected from the public implementations of neural style
+transfer1 2 3 .
+Implementation Details
+In the implementation, we use
+the VGG-19 network [Simonyan and Zisserman, 2015] fol-
+lowing the choice in [Gatys et al., 2016]. We also adopt
+the relu4 2 layer for the content loss, and relu1 1, relu2 1,
+relu3 1, relu4 1, relu5 1 for the style loss. The default weight
+factor wl is set as 1.0 if it is not speciﬁed. The target image x∗
+is initialized randomly and optimized iteratively until the rela-
+tive change between successive iterations is under 0.5%. The
+maximum number of iterations is set as 1000. For the method
+with Gaussian kernel MMD, the kernel bandwidth σ2 is ﬁxed
+as the mean of squared l2 distances of the sampled pairs since
+1 https://github.com/dmlc/mxnet/tree/master/example/neural-
+style
+2 https://github.com/jcjohnson/neural-style
+3 https://github.com/jcjohnson/fast-neural-style
+it does not affect a lot on the visual results. Our implemen-
+tation is based on the MXNet [Chen et al., 2016] implemen-
+tation1 which reproduces the results of original neural style
+transfer [Gatys et al., 2016].
+Since the scales of the gradients of the style loss differ for
+different methods, and the weights α and β in Eq. 3 affect
+the results of style transfer, we ﬁx some factors to make a fair
+comparison. Speciﬁcally, we set α = 1 because the content
+losses are the same among different methods. Then, for each
+method, we ﬁrst manually select a proper β (cid:48) such that the
+gradients on the x∗ from the style loss are of the same order
+of magnitudes as those from the content loss. Thus, we can
+manipulate a balance factor γ (β = γβ (cid:48) ) to make trade-off
+between the content and style matching.
+4.1 Different Style Representations
+Figure 1: Style reconstructions of different methods in ﬁve layers,
+respectively. Each row corresponds to one method and the recon-
+struction results are obtained by only using the style loss Lstyle with
+α = 0. We also reconstruct different style representations in differ-
+ent subsets of layers of VGG network. For example, layer 3 con-
+tains the style loss of the ﬁrst 3 layers (w1 = w2 = w3 = 1.0 and
+w4 = w5 = 0.0).
+To validate that the extended neural style transfer meth-
+ods can capture the style representation of an artistic image,
+(a) Content / Style
+(b) γ = 0.1
+(c) γ = 0.2
+(d) γ = 1.0
+(e) γ = 5.0
+(f) γ = 10.0
+Figure 2: Results of the four methods (linear, poly, Gaussian and BN ) with different balance factor γ . Larger γ means more emphasis on the
+style loss.
+we ﬁrst visualize the style reconstruction results of different
+methods only using the style loss in Fig. 1. Moreover, Fig. 1
+also compares the style representations of different layers. On
+one hand, for a speciﬁc method (one row), the results show
+that different layers capture different levels of style: The tex-
+tures in the top layers usually has larger granularity than those
+in the bottom layers. This is reasonable because each neuron
+in the top layers has larger receptive ﬁeld and thus has the
+ability to capture more global textures. On the other hand,
+for a speciﬁc layer, Fig. 1 also demonstrates that the style
+captured by different methods differs. For example, in top
+layers, the textures captured by MMD with a linear kernel are
+composed by thick strokes. Contrarily, the textures captured
+by MMD with a polynomial kernel are more ﬁne grained.
+4.2 Result Comparisons
+Effect of the Balance Factor We ﬁrst explore the effect of
+the balance factor between the content loss and style loss by
+varying the weight γ . Fig. 2 shows the results of four trans-
+fer methods with various γ from 0.1 to 10.0. As intended,
+the global color information in the style image is successfully
+transfered to the content image, and the results with smaller
+γ preserve more content details as shown in Fig. 2(b) and
+Fig. 2(c). When γ becomes larger, more stylized textures
+are incorporated into the results. For example, Fig. 2(e) and
+Fig. 2(f) have much more similar illumination and textures
+with the style image, while Fig. 2(d) shows a balanced result
+between the content and style. Thus, users can make trade-off
+between the content and the style by varying γ .
+(a) Content /
+Style
+(b) linear
+(c) poly
+Gaus-
+(e) BN
+(d)
+sian
+Figure 3: Visual results of several style transfer methods, includ-
+ing linear, poly, Gaussian and BN. The balance factors γ in the six
+examples are 2.0, 2.0, 2.0, 5.0, 5.0 and 5.0, respectively.
+(a) Content / Style
+(b) (0.9, 0.1)
+(c) (0.7, 0.3)
+(d) (0.5, 0.5)
+(e) (0.3, 0.7)
+(f) (0.1, 0.9)
+Figure 4: Results of two fusion methods: BN + poly and linear + Gaussian. The top two rows are the results of ﬁrst fusion method and the
+bottom two rows correspond to the second one. Each column shows the results of a balance weight between the two methods. γ is set as 5.0.
+Comparisons of Different Transfer Methods Fig. 3
+presents the results of various pairs of content and style im-
+ages with different transfer methods4 . Similar to matching
+Gram matrices, which is equivalent to the poly method, the
+other three methods can also transfer satisﬁed styles from the
+speciﬁed style images. This empirically demonstrates the cor-
+rectness of our interpretation of neural style transfer: Style
+transfer is essentially a domain adaptation problem, which
+aligns the feature distributions. Particularly, when the weight
+on the style loss becomes higher (namely, larger γ ), the dif-
+ferences among the four methods are getting larger. This
+indicates that these methods implicitly capture different as-
+pects of style, which has also been shown in Fig. 1. Since
+these methods have their unique properties, they could pro-
+vide more choices for users to stylize the content image. For
+example, linear achieves comparable results with other meth-
+ods, yet requires lower computation complexity.
+Fusion of Different Neural Style Transfer Methods
+Since we have several different neural style transfer methods,
+we propose to combine them to produce new transfer results.
+Fig. 4 demonstrates the fusion results of two combinations
+(linear + Gaussian and poly + BN ). Each row presents the
+results with different balance between the two methods. For
+example, Fig. 4(b) in the ﬁrst two rows emphasize more on
+BN and Fig. 4(f) emphasizes more on poly. The results in
+4More results can be found at
+http://www.icst.pku.edu.cn/struct/Projects/mmdstyle/result-
+1000/show-full.html
+the middle columns show the interpolation between these two
+methods. We can see that the styles of different methods are
+blended well using our method.
+5 Conclusion
+Despite the great success of neural style transfer, the ratio-
+nale behind neural style transfer was far from crystal. The
+vital “trick” for style transfer is to match the Gram matrices
+of the features in a layer of a CNN. Nevertheless, subsequent
+literatures about neural style transfer just directly improves
+upon it without investigating it in depth. In this paper, we
+present a timely explanation and interpretation for it. First,
+we theoretically prove that matching the Gram matrices is
+equivalent to a speciﬁc Maximum Mean Discrepancy (MMD)
+process. Thus, the style information in neural style transfer is
+intrinsically represented by the distributions of activations in
+a CNN, and the style transfer can be achieved by distribu-
+tion alignment. Moreover, we exploit several other distribu-
+tion alignment methods, and ﬁnd that these methods all yield
+promising transfer results. Thus, we justify the claim that
+neural style transfer is essentially a special domain adapta-
+tion problem both theoretically and empirically. We believe
+this interpretation provide a new lens to re-examine the style
+transfer problem, and will inspire more exciting works in this
+research area.
+Acknowledgement
+This work was supported by the National Natural Science
+Foundation of China under Contract 61472011.
+[Li et al., 2017] Yanghao Li, Naiyan Wang, Jianping Shi, Ji-
+aying Liu, and Xiaodi Hou. Revisiting batch normalization
+for practical domain adaptation. ICLRW, 2017.
+[Liang et al., 2001] Lin Liang, Ce Liu, Ying-Qing Xu, Bain-
+ing Guo, and Heung-Yeung Shum. Real-time texture syn-
+thesis by patch-based sampling. ACM Transactions on
+Graphics, 20(3):127–150, 2001.
+[Long et al., 2015] Mingsheng Long, Yue Cao,
+Jianmin
+Wang, and Michael I Jordan. Learning transferable fea-
+tures with deep adaptation networks. In ICML, 2015.
+[Long et al., 2016] Mingsheng Long, Jianmin Wang, and
+Michael I Jordan. Unsupervised domain adaptation with
+residual transfer networks. In NIPS, 2016.
+[Pan and Yang, 2010] Sinno Jialin Pan and Qiang Yang. A
+survey on transfer learning. IEEE Transactions on Knowl-
+edge and Data Engineering, 22(10):1345–1359, 2010.
+[Patel et al., 2015] Vishal M Patel, Raghuraman Gopalan,
+Ruonan Li, and Rama Chellappa. Visual domain adapta-
+tion: A survey of recent advances. IEEE Signal Processing
+Magazine, 32(3):53–69, 2015.
+[Ruder et al., 2016] Manuel Ruder, Alexey Dosovitskiy, and
+Thomas Brox. Artistic style transfer for videos. In GCPR,
+2016.
+[Selim et al., 2016] Ahmed Selim, Mohamed Elgharib, and
+Linda Doyle. Painting style transfer for head portraits us-
+ing convolutional neural networks. ACM Transactions on
+Graphics, 35(4):129, 2016.
+[Shih et al., 2014] YiChang Shih, Sylvain Paris, Connelly
+Barnes, William T Freeman, and Fr ´edo Durand. Style
+transfer for headshot portraits. ACM Transactions on
+Graphics, 33(4):148, 2014.
+[Simonyan and Zisserman, 2015] Karen Simonyan and An-
+drew Zisserman. Very deep convolutional networks for
+large-scale image recognition. In ICLR, 2015.
+[Sun et al., 2016] Baochen Sun,
+Jiashi Feng, and Kate
+Saenko. Return of frustratingly easy domain adaptation.
+AAAI, 2016.
+[Tzeng et al., 2014] Eric Tzeng, Judy Hoffman, Ning Zhang,
+Kate Saenko, and Trevor Darrell. Deep domain confu-
+sion: Maximizing for domain invariance. arXiv preprint
+arXiv:1412.3474, 2014.
+[Ulyanov et al., 2016] Dmitry Ulyanov, Vadim Lebedev,
+Andrea Vedaldi, and Victor Lempitsky. Texture networks:
+Feed-forward synthesis of textures and stylized images. In
+ICML, 2016.
+References
+[Beijbom, 2012] Oscar Beijbom.
+Domain adaptations
+for computer vision applications.
+arXiv preprint
+arXiv:1211.4860, 2012.
+[Champandard, 2016] Alex J Champandard. Semantic style
+transfer and turning two-bit doodles into ﬁne artworks.
+arXiv preprint arXiv:1603.01768, 2016.
+[Chen et al., 2016] Tianqi Chen, Mu Li, Yutian Li, Min Lin,
+Naiyan Wang, Minjie Wang, Tianjun Xiao, Bing Xu,
+Chiyuan Zhang, and Zheng Zhang. MXNet: A ﬂexible
+and efﬁcient machine learning library for heterogeneous
+distributed systems. NIPS Workshop on Machine Learn-
+ing Systems, 2016.
+[Efros and Freeman, 2001] Alexei A Efros and William T
+Freeman. Image quilting for texture synthesis and transfer.
+In SIGGRAPH, 2001.
+[Efros and Leung, 1999] Alexei A Efros and Thomas K Le-
+ung. Texture synthesis by non-parametric sampling.
+In
+ICCV, 1999.
+[Frigo et al., 2016] Oriel Frigo, Neus Sabater, Julie Delon,
+and Pierre Hellier. Split and match: Example-based adap-
+tive patch sampling for unsupervised style transfer.
+In
+CVPR, 2016.
+[Gatys et al., 2016] Leon A Gatys, Alexander S Ecker, and
+Matthias Bethge. Image style transfer using convolutional
+neural networks. In CVPR, 2016.
+[Gretton et al., 2012a] Arthur Gretton, Karsten M Borg-
+wardt, Malte J Rasch, Bernhard Sch ¨olkopf, and Alexander
+Smola. A kernel two-sample test. The Journal of Machine
+Learning Research, 13(1):723–773, 2012.
+[Gretton et al., 2012b] Arthur Gretton, Dino Sejdinovic,
+Heiko Strathmann, Sivaraman Balakrishnan, Massimil-
+iano Pontil, Kenji Fukumizu, and Bharath K Sriperum-
+budur. Optimal kernel choice for large-scale two-sample
+tests. In NIPS, 2012.
+[Hertzmann et al., 2001] Aaron Hertzmann, Charles E Ja-
+cobs, Nuria Oliver, Brian Curless, and David H Salesin.
+Image analogies. In SIGGRAPH, 2001.
+[Johnson et al., 2016] Justin Johnson, Alexandre Alahi, and
+Li Fei-Fei. Perceptual losses for real-time style transfer
+and super-resolution. In ECCV, 2016.
+[Kwatra et al., 2005] Vivek Kwatra, Irfan Essa, Aaron Bo-
+bick, and Nipun Kwatra.
+Texture optimization for
+example-based synthesis. ACM Transactions on Graph-
+ics, 24(3):795–802, 2005.
+[Ledig et al., 2016] Christian Ledig, Lucas Theis, Ferenc
+Husz ´ar, Jose Caballero, Andrew Cunningham, Alejandro
+Acosta, Andrew Aitken, Alykhan Tejani, Johannes Totz,
+Zehan Wang, and Wenzhe Shi. Photo-realistic single im-
+age super-resolution using a generative adversarial net-
+work. arXiv preprint arXiv:1609.04802, 2016.
+[Li and Wand, 2016] Chuan Li and Michael Wand. Combin-
+ing Markov random ﬁelds and convolutional neural net-
+works for image synthesis. In CVPR, 2016.
